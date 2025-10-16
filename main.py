@@ -63,6 +63,7 @@ def main():
 
     for idx_replicate in range(num_replicates):
         curr_run_dir = run_dir / str(idx_replicate)
+        curr_run_dir.mkdir(parents=True, exist_ok=True)
         log.info(f"Starting run: {str(curr_run_dir)}")
         run(cfg, curr_run_dir)
 

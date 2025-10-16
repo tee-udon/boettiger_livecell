@@ -67,7 +67,7 @@ def plot_LE_result(cfg: SimConfig, run_dir: Path, run_id: int = 0) -> None:
         loop_size = np.squeeze(np.diff(bound_condensin_pos), axis=1)
 
         # Plot loop size distribution
-        loop_size_fpath = run_dir / f"loop_size_{run_id}.png"
+        loop_size_fpath = run_dir / f"loop_size_{run_id}_Cond{idx_condensin_type+1}.png"
         fig, ax = plt.subplots()
         ax.hist(loop_size)
         plt.savefig(loop_size_fpath, dpi=300, bbox_inches="tight")
