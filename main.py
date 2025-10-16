@@ -59,8 +59,12 @@ def main():
     run_dir = base / sub
     save_resolved_config(cfg, run_dir)
 
-    log.info("Starting run: %s", sub)
-    run(cfg, run_dir)
+    num_replicates = cfg.num_replicates
+
+    for idx_replicate in range(num_replicates):
+        curr_run_dir = run_dir / str(idx_replicate)
+        log.info(f"Starting run: {str(curr_run_dir)}")
+        run(cfg, curr_run_dir)
 
 
 if __name__ == "__main__":
