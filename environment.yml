@@ -1,0 +1,31 @@
+name: py-hoomd2
+channels:
+  - conda-forge
+dependencies:
+  - pyside2
+  - hoomd==3.11[build=*gpu*]
+  - pip
+  - fresnel[version='>=0.13']
+  - python[version='<3.11']
+  - gsd==2.9
+  - matplotlib[version='>=2.0']
+  - pandas[version='>=0.19']
+  - cupy
+  - numpy[version='<1.24']
+  - notebook
+  - scipy[version='>=0.16']
+  - ipython
+  - joblib
+  - openmm
+  - numba
+  - jupyter
+  - tqdm
+  - pygad
+  - cmasher
+  - seaborn
+  - kneed
+  - plotly
+  - pydantic
+  - conda-forge::pyyaml
+  - ruff
+prefix: /mnt/home/tudomlumleart/miniforge3/envs/py-hoomd2
