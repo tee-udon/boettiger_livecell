@@ -40,7 +40,7 @@ plot_LE: true
 backend: slurm
 
 # bookkeeping
-out_dir: /mnt/home/tudomlumleart/ceph/04_MitoticChromosome/dataset/simulations/20251016_Test
+out_dir: F:\Tee\MitoticChromosome\Dataset\20251016_Test
 condition_name: TestSlurm
 
 # slurm options

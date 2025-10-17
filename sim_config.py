@@ -1,5 +1,5 @@
 from typing import Literal, List, Optional, Tuple
-from pydantic import BaseModel, PrivateAttr, Field, field_validator, computed_field
+from pydantic import BaseModel, PrivateAttr, Field, Extra, field_validator, computed_field
 
 
 class SlurmCfg(BaseModel):
@@ -22,7 +22,7 @@ class SlurmCfg(BaseModel):
     wait: bool = True  # block until job finishes (poll squeue/sacct)
 
 
-class SimConfig(BaseModel):
+class SimConfig(BaseModel, extra=Extra.forbid):
     # --- number of independent replicates per run
     num_replicates: int = Field(
         1, 
