@@ -55,13 +55,13 @@ def plot_LE_result(cfg: SimConfig, run_dir: Path, run_id: int = 0) -> None:
         curr_condensin_pos = condensin_pos_array[timepoint, :]
 
         # condensin_props_array[..., ..., 0] records the bound status
-        # can be either 0 (condensin 1) or 1 (condensin 2)
-        condensin_type_bool = (
+        # can be either 0 (unbound) or 1 (bound)
+        condensin_bound_bool = (
             condensin_props_array[timepoint, :, 0] == 1
         )
         # condensin_props_array[..., ..., -1] records the condensin type
-        # can be either 0 (unbound) or 1 (bound)
-        condensin_bound_bool = condensin_props_array[timepoint, :, -1] == idx_condensin_type
+        # can be either 0 (condensin 1) or 1 (condensin 2)
+        condensin_type_bool = condensin_props_array[timepoint, :, -1] == idx_condensin_type
 
         condensin_bool = (condensin_type_bool) & (condensin_bound_bool)
 
