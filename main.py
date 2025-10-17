@@ -6,10 +6,8 @@ from config_loader import load_config
 from sim_config import SimConfig
 from run_sim import run
 
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(name)s] %(levelname)s:%(message)s')
 log = logging.getLogger(__name__)
-
 
 def save_resolved_config(cfg: SimConfig, run_dir: Path):
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +55,8 @@ def main():
     base = Path(cfg.out_dir)
     sub = args.out_subdir or cfg.condition_name or "default"
     run_dir = base / sub
+    run_dir.mkdir(parents=True, exist_ok=True)
+
     save_resolved_config(cfg, run_dir)
 
     num_replicates = cfg.num_replicates

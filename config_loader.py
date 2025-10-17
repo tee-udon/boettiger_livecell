@@ -28,6 +28,7 @@ def load_config(config_path: str, overrides: List[str] | None = None) -> SimConf
     with open(config_path, "r") as f:
         raw = yaml.safe_load(f) or {}
     merged = _apply_overrides(raw, overrides or [])
+
     try:
         return SimConfig.model_validate(merged)
     except ValidationError as e:
