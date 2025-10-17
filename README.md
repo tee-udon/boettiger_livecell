@@ -48,7 +48,7 @@ The 1D positions of Condensins are slightly more complicated to extract, but one
 The information about the type and binding status of Condensin resides in `SMC_props_*.npy`. Suffix convention is similar to `SMC_pos_*.npy`. This information is encoded in a `num_MD_timepoints x num_condensins x 4` numpy array. The binding status (`0`=unbound and `1`=bound) is stored in the first entry of the last dimension. On the contrary, the type of Condensin (`0`=Condensin 1 and `1`=Condensin 2) is saved in the last entry of the last dimension of this array. 
 
 
-See [jupyter notebook](ceph/04_MitoticChromosome/scripts/boettiger-mitotic/README.md) (`tutorial/boettiger_servers/20251017_AnalyzingResultsTutorial.ipynb`) for more information. 
+See [jupyter notebook](https://github.com/tee-udon/boettiger-mitotic/blob/main/tutorial/boettiger_servers/20251017_AnalyzingResultsTutorial.ipynb) (`tutorial/boettiger_servers/20251017_AnalyzingResultsTutorial.ipynb`) for more information. 
 
 
 
