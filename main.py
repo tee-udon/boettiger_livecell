@@ -6,7 +6,7 @@ from config_loader import load_config
 from sim_config import SimConfig
 from run_sim import run
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(name)s] %(levelname)s:%(message)s')
+logging.basicConfig(format='%(asctime)s [%(name)s] %(levelname)s:%(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 log = logging.getLogger(__name__)
 
 def save_resolved_config(cfg: SimConfig, run_dir: Path):

@@ -47,6 +47,7 @@ def plot_LE_result(cfg: SimConfig, run_dir: Path, run_id: int = 0) -> None:
     )
     ax.set_xlim(2000, 6000)
     plt.savefig(kymograph_fpath, dpi=300, bbox_inches="tight")
+    plt.close()
 
     # Plot loop length distribution at last timepoint
     num_condensin_types = 2
@@ -75,6 +76,7 @@ def plot_LE_result(cfg: SimConfig, run_dir: Path, run_id: int = 0) -> None:
         fig, ax = plt.subplots()
         ax.hist(loop_size)
         plt.savefig(loop_size_fpath, dpi=300, bbox_inches="tight")
+        plt.close()
 
 
 def downsampling_LE(cfg: SimConfig, run_dir: Path, run_id: int) -> None:
