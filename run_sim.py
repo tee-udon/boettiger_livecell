@@ -5,6 +5,9 @@ from sim_config import SimConfig
 from run_sim_LE import simulate_LE
 from run_sim_MD import simulate_MD
 from md_backend_slurm import run_md_slurm
+from datatime import datetime
+import json
+import time
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
@@ -132,13 +135,31 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
 
         if backend == "local":
             log.info('Simulating molecular dynamics...')
+            start_MD_time = time.time()
             simulate_MD(cfg, run_dir)
+            end_MD_time = time.time()
             log.info('Finished!')
         elif backend == "slurm":
             if not cfg.slurm:
                 raise SystemExit("backend='slurm' requires cfg.slurm to be set")
             log.info('Simulating molecular dynamics...')
+            start_MD_time = time.time()
             run_md_slurm(cfg, run_dir)
+            end_MD_time = time.time()
             log.info('Finished!')
         else:
             raise SystemExit(f"Unknown backend: {cfg.backend}")
+        
+        runtime_MD = end_MD_time - start_MD_time
+        runtime_MD_fpath = run_dir / "runtime_MD_log.json"
+
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "runtime": runtime_MD,
+            "GPU_device": cfg.gpu_device
+        }
+
+        with open(runtime_MD_fpath, "a") as f:
+            f.write(json.dumps(record), "\n")
+
+        log.info(f'MD runtime logged to {runtime_MD_fpath}')
