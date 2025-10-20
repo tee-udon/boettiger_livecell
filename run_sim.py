@@ -5,7 +5,7 @@ from sim_config import SimConfig
 from run_sim_LE import simulate_LE
 from run_sim_MD import simulate_MD
 from md_backend_slurm import run_md_slurm
-from datatime import datetime
+from datetime import datetime
 import json
 import time
 import h5py
@@ -119,6 +119,8 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
     num_sister_chromatids = cfg.num_sister_chromatids
     plot_LE = cfg.plot_LE
     backend = cfg.backend
+    gpu_device = cfg.gpu_device 
+    log.info(f'GPU device is {gpu_device}')
     for idx_sister in range(num_sister_chromatids):
         log.info(f'Simulating sister {idx_sister+1} out of {num_sister_chromatids}...')
         log.info('Simulating 1D Loop Extrusion...')
@@ -160,6 +162,6 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
         }
 
         with open(runtime_MD_fpath, "a") as f:
-            f.write(json.dumps(record), "\n")
+            f.write(json.dumps(record) + "\n")
 
         log.info(f'MD runtime logged to {runtime_MD_fpath}')
