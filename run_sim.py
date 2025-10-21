@@ -123,23 +123,26 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
     num_sister_chromatids = cfg.num_sister_chromatids
     plot_LE = cfg.plot_LE
     backend = cfg.backend
+    gpu_device = cfg.gpu_device 
+    log.info(f'GPU device is {gpu_device}')
     for idx_sister in range(num_sister_chromatids):
-        log.info(
-            f"Simulating sister {idx_sister + 1} out of {num_sister_chromatids}..."
-        )
-        log.info("Simulating 1D Loop Extrusion...")
-        simulate_LE(cfg, run_dir, idx_sister)
-
-        if plot_LE:
-            log.info("Plotting results from 1D Loop Extrusion for sanity check...")
-            plot_LE_result(cfg, run_dir, idx_sister)
+        log.info(f'Simulating sister {idx_sister+1} out of {num_sister_chromatids}...')
+        
+        if cfg.num_condensin_total == 0:
+            log.info('Number of total condensin = 0. No 1D Loop Extrusion Simulation.')
+            
         else:
-            log.warning(
-                "Program does not plot results. Change plot_LE to true if you want otherwise."
-            )
+            log.info('Simulating 1D Loop Extrusion...')
+            simulate_LE(cfg, run_dir, idx_sister)
 
-        log.info("Saving h5 files for downstream MD simulation...")
-        downsampling_LE(cfg, run_dir, idx_sister)
+            if plot_LE:
+                log.info('Plotting results from 1D Loop Extrusion for sanity check...')
+                plot_LE_result(cfg, run_dir, idx_sister)
+            else:
+                log.warning("Program does not plot results. Change plot_LE to true if you want otherwise.")
+
+            log.info('Saving h5 files for downstream MD simulation...')
+            downsampling_LE(cfg, run_dir, idx_sister)
 
         if backend == "local":
             log.info("Simulating molecular dynamics...")
@@ -168,6 +171,6 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
         }
 
         with open(runtime_MD_fpath, "a") as f:
-            f.write(json.dumps(record), "\n")
+            f.write(json.dumps(record) + "\n")
 
         log.info(f"MD runtime logged to {runtime_MD_fpath}")
