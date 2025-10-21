@@ -5,7 +5,7 @@ from sim_config import SimConfig
 from run_sim_LE import simulate_LE
 from run_sim_MD import simulate_MD
 from md_backend_slurm import run_md_slurm
-from datatime import datetime
+from datetime import datetime
 import json
 import time
 import h5py
@@ -13,7 +13,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(name)s] %(levelname)s:%(message)s')
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s [%(name)s] %(levelname)s:%(message)s"
+)
 log = logging.getLogger(__name__)
 
 
@@ -60,12 +62,12 @@ def plot_LE_result(cfg: SimConfig, run_dir: Path, run_id: int = 0) -> None:
 
         # condensin_props_array[..., ..., 0] records the bound status
         # can be either 0 (unbound) or 1 (bound)
-        condensin_bound_bool = (
-            condensin_props_array[timepoint, :, 0] == 1
-        )
+        condensin_bound_bool = condensin_props_array[timepoint, :, 0] == 1
         # condensin_props_array[..., ..., -1] records the condensin type
         # can be either 0 (condensin 1) or 1 (condensin 2)
-        condensin_type_bool = condensin_props_array[timepoint, :, -1] == idx_condensin_type
+        condensin_type_bool = (
+            condensin_props_array[timepoint, :, -1] == idx_condensin_type
+        )
 
         condensin_bool = (condensin_type_bool) & (condensin_bound_bool)
 
@@ -75,7 +77,9 @@ def plot_LE_result(cfg: SimConfig, run_dir: Path, run_id: int = 0) -> None:
         loop_size = np.squeeze(np.diff(bound_condensin_pos), axis=1)
 
         # Plot loop size distribution
-        loop_size_fpath = run_dir / f"loop_size_{run_id}_Cond{idx_condensin_type+1}.png"
+        loop_size_fpath = (
+            run_dir / f"loop_size_{run_id}_Cond{idx_condensin_type + 1}.png"
+        )
         fig, ax = plt.subplots()
         ax.hist(loop_size)
         plt.savefig(loop_size_fpath, dpi=300, bbox_inches="tight")
@@ -120,46 +124,50 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
     plot_LE = cfg.plot_LE
     backend = cfg.backend
     for idx_sister in range(num_sister_chromatids):
-        log.info(f'Simulating sister {idx_sister+1} out of {num_sister_chromatids}...')
-        log.info('Simulating 1D Loop Extrusion...')
+        log.info(
+            f"Simulating sister {idx_sister + 1} out of {num_sister_chromatids}..."
+        )
+        log.info("Simulating 1D Loop Extrusion...")
         simulate_LE(cfg, run_dir, idx_sister)
 
         if plot_LE:
-            log.info('Plotting results from 1D Loop Extrusion for sanity check...')
+            log.info("Plotting results from 1D Loop Extrusion for sanity check...")
             plot_LE_result(cfg, run_dir, idx_sister)
         else:
-            log.warning("Program does not plot results. Change plot_LE to true if you want otherwise.")
+            log.warning(
+                "Program does not plot results. Change plot_LE to true if you want otherwise."
+            )
 
-        log.info('Saving h5 files for downstream MD simulation...')
+        log.info("Saving h5 files for downstream MD simulation...")
         downsampling_LE(cfg, run_dir, idx_sister)
 
         if backend == "local":
-            log.info('Simulating molecular dynamics...')
+            log.info("Simulating molecular dynamics...")
             start_MD_time = time.time()
             simulate_MD(cfg, run_dir)
             end_MD_time = time.time()
-            log.info('Finished!')
+            log.info("Finished!")
         elif backend == "slurm":
             if not cfg.slurm:
                 raise SystemExit("backend='slurm' requires cfg.slurm to be set")
-            log.info('Simulating molecular dynamics...')
+            log.info("Simulating molecular dynamics...")
             start_MD_time = time.time()
             run_md_slurm(cfg, run_dir)
             end_MD_time = time.time()
-            log.info('Finished!')
+            log.info("Finished!")
         else:
             raise SystemExit(f"Unknown backend: {cfg.backend}")
-        
+
         runtime_MD = end_MD_time - start_MD_time
         runtime_MD_fpath = run_dir / "runtime_MD_log.json"
 
         record = {
             "timestamp": datetime.now().isoformat(),
             "runtime": runtime_MD,
-            "GPU_device": cfg.gpu_device
+            "GPU_device": cfg.gpu_device,
         }
 
         with open(runtime_MD_fpath, "a") as f:
             f.write(json.dumps(record), "\n")
 
-        log.info(f'MD runtime logged to {runtime_MD_fpath}')
+        log.info(f"MD runtime logged to {runtime_MD_fpath}")

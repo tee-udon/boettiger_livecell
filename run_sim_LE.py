@@ -721,6 +721,7 @@ def simulate_LE(
     res_loop_pos = np.zeros(
         (cfg.num_LE_steps, cfg.num_condensin_total, 2), dtype=np.int64
     )  # Bond array.
+
     for j in tqdm.tqdm(range(cfg.num_LE_steps)):
         loop_pos = update_SMC_sim(CTCFs, SMCs)  # Calculate loops/bonds from simulation
         res_loop_pos[j] = loop_pos.copy()  # Record bonds
