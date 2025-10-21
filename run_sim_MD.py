@@ -176,23 +176,16 @@ class bondUpdater(object):
 
 def simulate_MD(cfg: SimConfig, run_dir: Path):
     base_dir = run_dir
+
     num_sister_chromatid = cfg.num_sister_chromatids
-
-    lef_position_list = []
-    for idx_sister in range(num_sister_chromatid):
-        lef_position_fpath = base_dir / f"LEFPositions_{idx_sister}.h5"
-        lef_positions = h5py.File(
-            lef_position_fpath, mode="r"
-        )  # Read previously exported loop positions from 1D loop extrusion simulation.
-        lef_position_list.append(lef_positions)
-
-    # Read parameters from the loop position file:
-    N = np.sum([int(x.attrs["N"]) for x in lef_position_list])
-    N_per_sister_chromatid = N // num_sister_chromatid
-    LEFpositions = np.concatenate([x["positions"] for x in lef_position_list], axis=1)
-    Nframes = LEFpositions.shape[0]
-
     repulsionEnergy = cfg.repulsion
+    collision_rate = cfg.collision_rate
+    attraction_radius = cfg.attraction_radius
+    equilibration_timestep = cfg.equilibration_timestep
+    gpu_device = cfg.gpu_device
+    N = cfg.num_monomers
+    N_per_sister_chromatid = N // num_sister_chromatid
+
     interactionMatrix = np.array(cfg.attraction_coefficient_matrix)
     monomerTypes = np.array(cfg.monomer_type_list)
 
@@ -201,6 +194,30 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
 
     steps = cfg.num_MD_steps_per_LE
     density = cfg.density
+
+    smcBondDist = cfg.smc_bond_dist
+    smcBondWiggleDist = cfg.smc_bond_wiggle_dist
+
+    if cfg.num_condensin_total > 0:
+        lef_position_list = []
+        for idx_sister in range(num_sister_chromatid):
+            lef_position_fpath = base_dir / f"LEFPositions_{idx_sister}.h5"
+            lef_positions = h5py.File(
+                lef_position_fpath, mode="r"
+            )  # Read previously exported loop positions from 1D loop extrusion simulation.
+            lef_position_list.append(lef_positions)
+
+        # Read parameters from the loop position file:
+       
+        LEFpositions = np.concatenate([x["positions"] for x in lef_position_list], axis=1)
+        Nframes = LEFpositions.shape[0]
+
+        milker = bondUpdater(LEFpositions)
+        
+
+    else:
+        Nframes = cfg.num_LE_steps // 6
+
     # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
     data = grow_cubic(N, int((N / density) ** 0.333))
 
@@ -211,24 +228,16 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     saveEveryBlocks = 10  # save every 1 simulation steps. Multiply by loop position sampling (typically every 1 s) for final simulation step frequency, e.g. 1x1 = 1 s.
     restartSimulationEveryBlocks = Nframes  # Do not restart.
 
-    smcBondDist = cfg.smc_bond_dist
-    smcBondWiggleDist = cfg.smc_bond_wiggle_dist
-
     # assertions for easy managing code below
     assert (Nframes % restartSimulationEveryBlocks) == 0
     assert (restartSimulationEveryBlocks % saveEveryBlocks) == 0
 
     simInitsTotal = (Nframes) // restartSimulationEveryBlocks
 
-    milker = bondUpdater(LEFpositions)
     reporter = HDF5Reporter(
-        folder=base_dir, max_data_length=100, overwrite=True, blocks_only=False
-    )
+            folder=base_dir, max_data_length=100, overwrite=True, blocks_only=False
+        )
 
-    collision_rate = cfg.collision_rate
-    attraction_radius = cfg.attraction_radius
-    equilibration_timestep = cfg.equilibration_timestep
-    gpu_device = cfg.gpu_device
 
     for iteration in range(simInitsTotal):
         # simulation parameters are defined below
@@ -305,15 +314,16 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         kbond = a.kbondScalingFactor / (smcBondWiggleDist**2)
         bondDist = smcBondDist * a.length_scale
 
-        activeParams = {"length": bondDist, "k": kbond}
-        inactiveParams = {"length": bondDist, "k": 0}
-        milker.setParams(activeParams, inactiveParams)
+        if cfg.num_condensin_total > 0:
+            activeParams = {"length": bondDist, "k": kbond}
+            inactiveParams = {"length": bondDist, "k": 0}
+            milker.setParams(activeParams, inactiveParams)
 
-        # this step actually puts all bonds in and sets first bonds to be what they should be
-        milker.setup(
-            bondForce=a.force_dict["harmonic_bonds"],
-            blocks=restartSimulationEveryBlocks,
-        )
+            # this step actually puts all bonds in and sets first bonds to be what they should be
+            milker.setup(
+                bondForce=a.force_dict["harmonic_bonds"],
+                blocks=restartSimulationEveryBlocks,
+            )
 
         # Initialize starting conformation and minimize the energy. Sometimes this does not work, so retry until the energy can be minimized.
         if iteration == 0:
@@ -337,7 +347,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         )  # Initial equilibration steps to ensure that we start from a relaxed polymer state.
 
         for i in range(restartSimulationEveryBlocks):
-            if i < restartSimulationEveryBlocks - 1:
+            if i < restartSimulationEveryBlocks - 1 and cfg.num_condensin_total > 0:
                 curBonds, pastBonds = milker.step(
                     a.context
                 )  # this updates bonds. You can do something with bonds here

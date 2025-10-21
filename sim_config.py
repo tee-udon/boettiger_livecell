@@ -158,14 +158,20 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     )
     @property
     def ratio_condensin_1(self) -> float:
-        return self.num_condensin_1 / self.num_condensin_total
+        if self.num_condensin_total > 0:
+            return self.num_condensin_1 / self.num_condensin_total
+        else: 
+            return 0 
 
     @computed_field(
         return_type=float, description="Fraction of Condensin 2 in the system."
     )
     @property
     def ratio_condensin_2(self) -> float:
-        return 1 - self.ratio_condensin_1
+        if self.num_condensin_total > 0:
+            return 1 - self.ratio_condensin_1
+        else: 
+            return 0 
 
     @computed_field(
         return_type=Tuple[float, float], description="Tuple of Condensin fractions."

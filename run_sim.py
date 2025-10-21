@@ -123,17 +123,22 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
     log.info(f'GPU device is {gpu_device}')
     for idx_sister in range(num_sister_chromatids):
         log.info(f'Simulating sister {idx_sister+1} out of {num_sister_chromatids}...')
-        log.info('Simulating 1D Loop Extrusion...')
-        simulate_LE(cfg, run_dir, idx_sister)
-
-        if plot_LE:
-            log.info('Plotting results from 1D Loop Extrusion for sanity check...')
-            plot_LE_result(cfg, run_dir, idx_sister)
+        
+        if cfg.num_condensin_total == 0:
+            log.info('Number of total condensin = 0. No 1D Loop Extrusion Simulation.')
+            
         else:
-            log.warning("Program does not plot results. Change plot_LE to true if you want otherwise.")
+            log.info('Simulating 1D Loop Extrusion...')
+            simulate_LE(cfg, run_dir, idx_sister)
 
-        log.info('Saving h5 files for downstream MD simulation...')
-        downsampling_LE(cfg, run_dir, idx_sister)
+            if plot_LE:
+                log.info('Plotting results from 1D Loop Extrusion for sanity check...')
+                plot_LE_result(cfg, run_dir, idx_sister)
+            else:
+                log.warning("Program does not plot results. Change plot_LE to true if you want otherwise.")
+
+            log.info('Saving h5 files for downstream MD simulation...')
+            downsampling_LE(cfg, run_dir, idx_sister)
 
         if backend == "local":
             log.info('Simulating molecular dynamics...')
