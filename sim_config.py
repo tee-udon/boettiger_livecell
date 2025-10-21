@@ -121,6 +121,10 @@ class SimConfig(BaseModel, extra=Extra.forbid):
         description="Standard deviation of bond lenght between Condensin arms.",
     )
     gpu_device: str = Field("0", description="GPU device used to run MD simulation.")
+    initial_conformation: Literal['random_walk', 'crumpled'] = Field(
+        'crumpled',
+        description="Initial conformation for MD simulation"
+    )
 
     # --- chromosome setting
     centromere_range_list: Tuple[int, int] = Field(

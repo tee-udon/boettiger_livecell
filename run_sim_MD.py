@@ -24,7 +24,7 @@ import polychrom
 from polychrom import forces
 from polychrom import forcekits
 from polychrom.simulation import Simulation
-from polychrom.starting_conformations import grow_cubic
+from polychrom.starting_conformations import grow_cubic, create_random_walk
 from polychrom.hdf5_format import HDF5Reporter, list_URIs, load_URI
 import openmm
 
@@ -182,6 +182,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     collision_rate = cfg.collision_rate
     attraction_radius = cfg.attraction_radius
     equilibration_timestep = cfg.equilibration_timestep
+    initial_conformation = cfg.initial_conformation
     gpu_device = cfg.gpu_device
     N = cfg.num_monomers
     N_per_sister_chromatid = N // num_sister_chromatid
@@ -218,8 +219,14 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     else:
         Nframes = cfg.num_LE_steps // 6
 
-    # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
-    data = grow_cubic(N, int((N / density) ** 0.333))
+    
+    if initial_conformation == 'crumpled':
+        # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
+        data = grow_cubic(N, int((N / density) ** 0.333))
+    elif initial_conformation == 'random_walk':
+        data = create_random_walk(step_size=1, N=N)
+    else:
+        raise ValueError('initial_conformation must either be crumpled or random_walk')
 
     # Save the initial conformation
     init_conformation_fpath = base_dir / "init_conformation.npy"
@@ -330,7 +337,13 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             for i in range(100):
                 try:
                     if i > 0:
-                        data = grow_cubic(N, int((N / (0.2 * 1.2)) ** 0.333))
+                        if initial_conformation == 'crumpled':
+                            # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
+                            data = grow_cubic(N, int((N / density) ** 0.333))
+                        elif initial_conformation == 'random_walk':
+                            data = create_random_walk(step_size=1, N=N)
+                        else:
+                            raise ValueError('initial_conformation must either be crumpled or random_walk')
                         np.save(init_conformation_fpath, data)
                         a.set_data(
                             data, center=True
