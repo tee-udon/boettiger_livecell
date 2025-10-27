@@ -1,5 +1,12 @@
 from typing import Literal, List, Optional, Tuple
-from pydantic import BaseModel, PrivateAttr, Field, Extra, field_validator, computed_field
+from pydantic import (
+    BaseModel,
+    PrivateAttr,
+    Field,
+    Extra,
+    field_validator,
+    computed_field,
+)
 
 
 class SlurmCfg(BaseModel):
@@ -24,11 +31,8 @@ class SlurmCfg(BaseModel):
 
 class SimConfig(BaseModel, extra=Extra.forbid):
     # --- number of independent replicates per run
-    num_replicates: int = Field(
-        1, 
-        ge=1
-    )
-    
+    num_replicates: int = Field(1, ge=1)
+
     # --- core loop extrusion simulation knobs
     num_monomers: int = Field(
         100_000,
@@ -121,9 +125,8 @@ class SimConfig(BaseModel, extra=Extra.forbid):
         description="Standard deviation of bond lenght between Condensin arms.",
     )
     gpu_device: str = Field("0", description="GPU device used to run MD simulation.")
-    initial_conformation: Literal['random_walk', 'crumpled'] = Field(
-        'crumpled',
-        description="Initial conformation for MD simulation"
+    initial_conformation: Literal["random_walk", "crumpled"] = Field(
+        "crumpled", description="Initial conformation for MD simulation"
     )
 
     # --- chromosome setting
@@ -164,8 +167,8 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     def ratio_condensin_1(self) -> float:
         if self.num_condensin_total > 0:
             return self.num_condensin_1 / self.num_condensin_total
-        else: 
-            return 0 
+        else:
+            return 0
 
     @computed_field(
         return_type=float, description="Fraction of Condensin 2 in the system."
@@ -174,8 +177,8 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     def ratio_condensin_2(self) -> float:
         if self.num_condensin_total > 0:
             return 1 - self.ratio_condensin_1
-        else: 
-            return 0 
+        else:
+            return 0
 
     @computed_field(
         return_type=Tuple[float, float], description="Tuple of Condensin fractions."
@@ -209,6 +212,7 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     # --- bookkeeping
     condition_name: str = ""
     out_dir: str = "runs"
+    start_idx_replicate: int = 0
 
     # --- constant parameters for proper internal working of simulation
     _num_condensin_types: int = PrivateAttr(2)

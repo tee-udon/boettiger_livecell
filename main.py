@@ -60,8 +60,10 @@ def main():
     save_resolved_config(cfg, run_dir)
 
     num_replicates = cfg.num_replicates
+    start_idx_replicate = cfg.start_idx_replicate
+    final_idx_replicate = start_idx_replicate + num_replicates
 
-    for idx_replicate in range(num_replicates):
+    for idx_replicate in range(start_idx_replicate, final_idx_replicate):
         curr_run_dir = run_dir / str(idx_replicate)
         curr_run_dir.mkdir(parents=True, exist_ok=True)
         log.info(f"Starting run: {str(curr_run_dir)}")
