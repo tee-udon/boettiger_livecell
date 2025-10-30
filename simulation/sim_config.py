@@ -6,6 +6,7 @@ from pydantic import (
     Extra,
     field_validator,
     computed_field,
+    ConfigDict,
 )
 
 
@@ -30,6 +31,9 @@ class SlurmCfg(BaseModel):
 
 
 class SimConfig(BaseModel, extra=Extra.forbid):
+    # Make sure that it validates every time the attributes have been updated
+    model_config = ConfigDict(validate_assignment=True)
+
     # --- number of independent replicates per run
     num_replicates: int = Field(1, ge=1)
 

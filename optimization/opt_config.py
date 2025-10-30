@@ -8,12 +8,6 @@ from pydantic import (
     computed_field,
 )
 
-# TODO: Options
-# 1D only
-# MD as well - local, slurm
-
-# TODO: Dynamics option
-
 
 class SlurmCfg(BaseModel):
     partition: str = "gpu"
@@ -38,6 +32,10 @@ class SlurmCfg(BaseModel):
 class OptConfig(BaseModel, extra=Extra.forbid):
     # --- number of independent replicates per run
     num_replicates: int = Field(1, ge=1)
+    num_workers: int = Field(1, ge=1)
+
+    # --- number of Bayesian trials (this serves as a budget for our optimization routine)
+    num_trials: int = Field(1, ge=1)
 
     # --- simulation type
     simulation_type: Literal["1D", "MD"] = Field(
@@ -94,7 +92,7 @@ class OptConfig(BaseModel, extra=Extra.forbid):
         float, float
     ]  # Condensin 2 stall time upon seeing other Condensin 2
 
-    cond1_stall_probability_range: Tuple[float.float]
+    cond1_stall_probability_range: Tuple[float, float]
     cond2_stall_probability_range: Tuple[float, float]
 
     cond1_num_range = Tuple[int, int]
@@ -200,48 +198,6 @@ class OptConfig(BaseModel, extra=Extra.forbid):
 
     # --- computed hyparameters from user input for downstream simulation pipeline
     # TODO: Need to calculate these values afterwards when initialize Ax
-    @computed_field(return_type=int, description="Total Condensin in the system.")
-    @property
-    def num_condensin_total(self) -> int:
-        return self.num_condensin_1 + self.num_condensin_2
-
-    @computed_field(
-        return_type=float, description="Fraction of Condensin 1 in the system."
-    )
-    @property
-    def ratio_condensin_1(self) -> float:
-        if self.num_condensin_total > 0:
-            return self.num_condensin_1 / self.num_condensin_total
-        else:
-            return 0
-
-    @computed_field(
-        return_type=float, description="Fraction of Condensin 2 in the system."
-    )
-    @property
-    def ratio_condensin_2(self) -> float:
-        if self.num_condensin_total > 0:
-            return 1 - self.ratio_condensin_1
-        else:
-            return 0
-
-    @computed_field(
-        return_type=Tuple[float, float], description="Tuple of Condensin fractions."
-    )
-    @property
-    def ratio_condensin_list(self) -> Tuple[float, float]:
-        return (self.ratio_condensin_1, self.ratio_condensin_2)
-
-    @computed_field(
-        return_type=Tuple[Tuple[float, float], Tuple[float, float]],
-        description="Matrix of condensin stall time.",
-    )
-    @property
-    def condensin_stall_time_matrix(
-        self,
-    ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        return (self.condensin_1_stall_time_list, self.condensin_2_stall_time_list)
-
     @computed_field(
         return_type=Tuple[Tuple[float]], description="Attraction coefficient matrix."
     )
