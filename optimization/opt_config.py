@@ -336,8 +336,10 @@ class OptConfig(BaseModel, extra=Extra.forbid):
     def check_range_probability(cls, v):
         if len(v) != 2:
             raise ValueError("Range must contain exactly 2 values")
-        if any(val < 1 for val in v):
-            raise ValueError("All speeds must be >= 1")
+        if any(val > 1 for val in v):
+            raise ValueError("Probability must be between 0 and 1")
+        if any(val < 0 for val in v):
+            raise ValueError("Probability must be between 0 and 1")
         if v[0] > v[1]:
             raise ValueError("Lower bound must be less than or equal to upper bound")
         return v

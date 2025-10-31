@@ -3,7 +3,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
-from config_loader import load_config
+from config_loader_opt import load_config
 from opt_config import OptConfig
 from run_opt import run
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -113,6 +113,7 @@ def main():
     sub = args.out_subdir or cfg.condition_name or "default"
     run_dir = base / sub
     run_dir.mkdir(parents=True, exist_ok=True)
+    log.info(f'Run Bayesian Optimization in {str(run_dir)}')
 
     save_resolved_config(cfg, run_dir)
 
@@ -122,7 +123,7 @@ def main():
 
     # Picklable payload for child processes (don’t send complex objects if they aren’t picklable)
     # If OptConfig is pydantic, .model_dump() is safe; adjust if your type differs.
-    cfg_payload = cfg.model_dump()
+    cfg_payload = cfg.model_dump(exclude_computed_fields=True)
 
     # Tuning knobs
     max_workers = getattr(cfg, "num_workers", None) or os.cpu_count() or 4
@@ -144,11 +145,12 @@ def main():
 
         # wait for all (unordered), logging errors as they come
         for fut in as_completed(futures):
-            try:
-                done_path = fut.result()
-                log.info(f"[OK] Completed: {done_path}")
-            except Exception as e:
-                log.info(f"[ERR] A worker failed: {e!r}")
+            done_path = fut.result()
+            # try:
+            #     done_path = fut.result()
+            #     log.info(f"[OK] Completed: {done_path}")
+            # except Exception as e:
+            #     log.info(f"[ERR] A worker failed: {e!r}")
 
     log.info("All submitted runs are done.")
 

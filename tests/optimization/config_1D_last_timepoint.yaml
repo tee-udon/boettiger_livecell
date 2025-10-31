@@ -1,37 +1,41 @@
-num_replicates: 1 
-num_workers: 1
-num_trials: 3
+num_replicates: 5  # Number of independent parallel Bayesian optimization run 
+num_workers: 5
+num_trials: 2
 
 simulation_type: "1D"
 objective_calculation_option: "Last timepoint"
-objective_calcualation_timestep: None 
+objective_calculation_timestep: null 
 
 objective_BothCond_cond1: 0.8
 objective_BothCond_cond2: 8.69
 objective_Cond1Only_cond1: 0.8
 objective_Cond2Only_cond2: 18.35
 
+
+# Optimization bounds
 cond1_speed_range: [9, 10]
 cond2_speed_range: [15, 16]
 
 cond1_cond1_stall_time_range: [113, 114]
-cond1_cond2_stall_time_range: [1, 1]
+cond1_cond2_stall_time_range: [1, 1.1]
 
 cond2_cond1_stall_time_range: [50, 51]
 cond2_cond2_stall_time_range: [17, 18]
 
-cond1_stall_probability_range: [1, 1]
+cond1_stall_probability_range: [0.99, 1]
 cond2_stall_probability_range: [0.22, 0.25]
 
 cond1_num_range: [950, 1050]
 cond2_num_range: [350, 450]
 
-cond1_bound_lifetime_range: [750, 850]
-cond2_bound_lifetime_range: [100000, 100000]
+cond1_bound_lifetime_range: [750, 8c50]
+cond2_bound_lifetime_range: [100000, 100001]
 
-cond1_unbound_lifetime_list_range: [480, 500]
-cond2_unbound_lifetime_list_range: [110, 130]
+cond1_unbound_lifetime_range: [480, 500]
+cond2_unbound_lifetime_range: [110, 130]
 
+
+# Core 1D simulation hyperparameter
 num_monomers: 100000
 condensin_speed_sd_list: [0, 0]
 num_LE_steps: 1800
@@ -49,7 +53,7 @@ collision_rate: 0.03
 smc_bond_dist: 0.5
 smc_bond_wiggle_dist: 0.2
 gpu_device: "0"  
-initial_compartment: "crumpled"
+initial_conformation: "crumpled"
 
 # Chromosome setting 
 centromere_range_list: [0, 0]
@@ -61,3 +65,8 @@ plot_LE: true
 
 # backend 
 backend: local
+
+# bookkeeping
+condition_name: Test
+out_dir: /mnt/home/tudomlumleart/ceph/04_MitoticChromosome/dataset/simulations/20251031_BayesianOptimization
+start_idx_replicate: 0

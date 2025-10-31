@@ -1,15 +1,21 @@
-# run_sim.py
+# run_opt.py
 from __future__ import annotations
 from pathlib import Path
 from opt_config import OptConfig
 from typing import Literal
 from scipy import stats
 
-from simulation.md_backend_slurm import run_md_slurm
-from datetime import datetime
-from simulation.sim_config import SimConfig
-from simulation.run_sim_LE import simulate_LE
-from simulation.run_sim_MD import simulate_MD
+# TODO: change this to import from subfolder
+# from simulation.md_backend_slurm import run_md_slurm
+# from simulation.sim_config import SimConfig
+# from simulation.run_sim_LE import simulate_LE
+# from simulation.run_sim_MD import simulate_MD
+
+# HACK: I copied these files for now
+from md_backend_slurm import run_md_slurm
+from sim_config import SimConfig
+from run_sim_LE import simulate_LE
+from run_sim_MD import simulate_MD
 
 from ax.api.client import Client
 from ax.api.configs import RangeParameterConfig
@@ -42,8 +48,8 @@ def run_LE(
 
     simulate_LE(sim_cfg, curr_run_dir, run_id)
 
-    condensin_pos_files = run_dir.glob(f"SMC_pos_{run_id}.npy")
-    condensin_props_files = run_dir.glob(f"SMC_props_{run_id}.npy")
+    condensin_pos_files = curr_run_dir.glob(f"SMC_pos_{run_id}.npy")
+    condensin_props_files = curr_run_dir.glob(f"SMC_props_{run_id}.npy")
 
     condensin_pos_array = np.concatenate(
         [np.load(p, mmap_mode="r") for p in condensin_pos_files], axis=0
@@ -67,7 +73,7 @@ def run_LE(
         loop_occupancy_array[idx_timestep, neighbors] = 1
 
     # Plot kymograph of condensin occupancy
-    kymograph_fpath = run_dir / f"kymograph_{run_id}.png"
+    kymograph_fpath = curr_run_dir / f"kymograph_{run_id}.png"
     fig, ax = plt.subplots(1, 1, figsize=(20, 20))
     ax.imshow(
         loop_occupancy_array[:10000, :], aspect="auto", cmap="gnuplot2", vmin=0, vmax=1
@@ -78,7 +84,7 @@ def run_LE(
 
     # Plot loop length distribution at last timepoint
     # TODO: log objective functions for each run
-    num_condensin_types = 2
+
     simulation_type = opt_cfg.simulation_type
     objective_calculation_timestep = opt_cfg.objective_calculation_timestep
 
@@ -127,7 +133,7 @@ def run_LE(
 
             # Plot loop size distribution
             loop_size_fpath = (
-                run_dir
+                curr_run_dir
                 / f"loop_size_{run_id}_Step{timepoint}_Cond{idx_condensin_type + 1}.png"
             )
             fig, ax = plt.subplots()
@@ -161,7 +167,7 @@ def run_LE(
 
     loss_mean = df["loss_fn"].mean()
 
-    csv_fpath = run_dir / f"{condition}_Trial{run_id}_Objective1D.csv"
+    csv_fpath = curr_run_dir / f"{condition}_Trial{run_id}_Objective1D.csv"
     df.to_csv(csv_fpath, index=False)
 
     log.info(f"Saved losses for run {run_id} ({condition}) to {csv_fpath}")
@@ -223,7 +229,7 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
 
     opt_result_fpath = run_dir / "opt_result.json"
 
-    log.info(f"Number of Bayesian trails is {num_trials}")
+    log.info(f"Number of Bayesian trials is {num_trials}")
     log.info(f"Simulation type is {simulation_type}")
     log.info(f"Calculate objective functions at {objective_calculation_option}")
     log.info(f"GPU device is {gpu_device}")
@@ -236,7 +242,9 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
 
     # Now define a new SimConfig object for downstream run
     # Transfer hyperparameters from OptConfig
-    shared_fields = SimConfig.model.fields.keys() & OptConfig.model_fields.keys()
+    # log.debug(SimConfig.model.fields.keys())
+    shared_fields = SimConfig.model_fields.keys() & OptConfig.model_fields.keys()
+
     sim_cfg = SimConfig(**{f: getattr(cfg, f) for f in shared_fields})
 
     if opt_result_fpath.exists():
@@ -335,11 +343,13 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
             )
 
         for idx_trial in range(num_trials):
-            log.infof(
+            log.info(
                 f"Current optimization round = {idx_trial + 1} out of {num_trials}..."
             )
             # Nominate and define parameters
-            _, trial_params = client.get_next_trials(max_trials=1)
+            trial = client.get_next_trials(max_trials=1)
+
+            trial_params = list(trial.values())[0]
 
             # Now transfer nominated parameters to SimConfig object
             sim_cfg.condensin_speed_list = (
@@ -358,8 +368,8 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
                 trial_params["cond1_stall_probability"],
                 trial_params["cond2_stall_probability"],
             )
-            sim_cfg.condensin_1_num = trial_params["cond1_num"]
-            sim_cfg.condensin_2_num = trial_params["cond2_num"]
+            sim_cfg.num_condensin_1 = trial_params["cond1_num"]
+            sim_cfg.num_condensin_2 = trial_params["cond2_num"]
             sim_cfg.condensin_bound_lifetime_list = (
                 trial_params["cond1_bound_lifetime"],
                 trial_params["cond2_bound_lifetime"],
