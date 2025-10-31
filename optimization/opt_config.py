@@ -95,14 +95,14 @@ class OptConfig(BaseModel, extra=Extra.forbid):
     cond1_stall_probability_range: Tuple[float, float]
     cond2_stall_probability_range: Tuple[float, float]
 
-    cond1_num_range = Tuple[int, int]
-    cond2_num_range = Tuple[int, int]
+    cond1_num_range: Tuple[int, int]
+    cond2_num_range: Tuple[int, int]
 
-    cond1_bound_lifetime_range = Tuple[float, float]
-    cond2_bound_lifetime_range = Tuple[float, float]
+    cond1_bound_lifetime_range: Tuple[float, float]
+    cond2_bound_lifetime_range: Tuple[float, float]
 
-    cond1_unbound_lifetime_range = Tuple[float, float]
-    cond2_unbound_lifetime_range = Tuple[float, float]
+    cond1_unbound_lifetime_range: Tuple[float, float]
+    cond2_unbound_lifetime_range: Tuple[float, float]
 
     # --- core loop extrusion simulation knobs (constant)
     num_monomers: int = Field(
@@ -231,13 +231,6 @@ class OptConfig(BaseModel, extra=Extra.forbid):
     )  # Condensin does not stall on CTCFs
 
     # --- validator
-    @field_validator("condensin_speed_list")
-    def check_condensin_speed_list(cls, v):
-        if len(v) != 2:
-            raise ValueError("condensin_speed_list must contain exactly 2 values")
-        if any(val <= 0 for val in v):
-            raise ValueError("All speeds must be > 0")
-        return v
 
     @field_validator("condensin_speed_sd_list")
     def check_condensin_speed_sd_list(cls, v):
@@ -247,77 +240,10 @@ class OptConfig(BaseModel, extra=Extra.forbid):
             raise ValueError("All speed standard deviations must be >= 0")
         return v
 
-    @field_validator("condensin_1_stall_time_list")
-    def check_condensin_1_stall_time_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_1_stall_time_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        if v[1] != 1:
-            print("Detecting Condensin 1 stall time upon Condensin 2 greater than 1...")
-            print("Fixing such stall time to be 1 (no stall)")
-            v[1] = 1
-        return v
-
-    @field_validator("condensin_2_stall_time_list")
-    def check_condensin_2_stall_time_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_2_stall_time_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        return v
-
-    @field_validator("condensin_stall_probability_list")
-    def check_condensin_stall_probability_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_stall_probability_list must contain exactly 2 values"
-            )
-        if any(val < 0 for val in v):
-            raise ValueError("All stall time must be between 0 and 1")
-        if any(val > 1 for val in v):
-            raise ValueError("All stall time must be between 0 and 1")
-        return v
-
-    @field_validator("centromere_range_list", mode="after")
-    def check_centromere_range_list(cls, v, info):
-        num_monomers = info.data["num_monomers"]
-        if len(v) != 2:
-            raise ValueError("centromere_range_list must contain exactly 2 values")
-        if v[0] > v[1]:
-            raise ValueError("Lower bound must be <= the upper bound.")
-        if any(val >= num_monomers for val in v):
-            raise ValueError("Centromere bound must be within the polymer")
-        return v
-
-    @field_validator("condensin_bound_lifetime_list")
-    def check_condensin_bound_lifetime_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_bound_lifetime_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        return v
-
-    @field_validator("condensin_unbound_lifetime_list")
-    def check_condensin_unbound_lifetime_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_unbound_lifetime_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        return v
-
     @field_validator(
         "objective_BothCond_cond1",
         "objective_BothCond_cond2",
-        "objective_Cond1Only_cond",
+        "objective_Cond1Only_cond1",
         "objective_Cond2Only_cond2",
         mode="after",
     )
