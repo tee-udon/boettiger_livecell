@@ -258,10 +258,10 @@ class SimConfig(BaseModel, extra=Extra.forbid):
             )
         if any(val < 1 for val in v):
             raise ValueError("All stall time must be >= 1")
-        if v[1] != 1:
-            print("Detecting Condensin 1 stall time upon Condensin 2 greater than 1...")
-            print("Fixing such stall time to be 1 (no stall)")
-            v[1] = 1
+        # if v[1] != 1:
+        #     print("Detecting Condensin 1 stall time upon Condensin 2 greater than 1...")
+        #     print("Fixing such stall time to be 1 (no stall)")
+        #     v[1] = 1
         return v
 
     @field_validator("condensin_2_stall_time_list")

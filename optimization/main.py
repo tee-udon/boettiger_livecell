@@ -39,9 +39,9 @@ def _init_worker(numba_threads: int | None = None):
     Use it to cap low-level threads so multiple workers don't oversubscribe the CPU.
     """
     # If you don't use NumPy/BLAS, you can drop these.
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    # os.environ.setdefault("OMP_NUM_THREADS", "1")
+    # os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    # os.environ.setdefault("MKL_NUM_THREADS", "1")
 
     if numba_threads is not None:
         try:
@@ -113,7 +113,7 @@ def main():
     sub = args.out_subdir or cfg.condition_name or "default"
     run_dir = base / sub
     run_dir.mkdir(parents=True, exist_ok=True)
-    log.info(f'Run Bayesian Optimization in {str(run_dir)}')
+    log.info(f"Run Bayesian Optimization in {str(run_dir)}")
 
     save_resolved_config(cfg, run_dir)
 

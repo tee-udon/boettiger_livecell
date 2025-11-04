@@ -209,24 +209,24 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             lef_position_list.append(lef_positions)
 
         # Read parameters from the loop position file:
-       
-        LEFpositions = np.concatenate([x["positions"] for x in lef_position_list], axis=1)
+
+        LEFpositions = np.concatenate(
+            [x["positions"] for x in lef_position_list], axis=1
+        )
         Nframes = LEFpositions.shape[0]
 
         milker = bondUpdater(LEFpositions)
-        
 
     else:
         Nframes = cfg.num_LE_steps // 6
 
-    
-    if initial_conformation == 'crumpled':
+    if initial_conformation == "crumpled":
         # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
         data = grow_cubic(N, int((N / density) ** 0.333))
-    elif initial_conformation == 'random_walk':
+    elif initial_conformation == "random_walk":
         data = create_random_walk(step_size=1, N=N)
     else:
-        raise ValueError('initial_conformation must either be crumpled or random_walk')
+        raise ValueError("initial_conformation must either be crumpled or random_walk")
 
     # Save the initial conformation
     init_conformation_fpath = base_dir / "init_conformation.npy"
@@ -242,9 +242,8 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     simInitsTotal = (Nframes) // restartSimulationEveryBlocks
 
     reporter = HDF5Reporter(
-            folder=base_dir, max_data_length=100, overwrite=True, blocks_only=False
-        )
-
+        folder=base_dir, max_data_length=100, overwrite=True, blocks_only=False
+    )
 
     for iteration in range(simInitsTotal):
         # simulation parameters are defined below
@@ -337,13 +336,15 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             for i in range(100):
                 try:
                     if i > 0:
-                        if initial_conformation == 'crumpled':
+                        if initial_conformation == "crumpled":
                             # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
                             data = grow_cubic(N, int((N / density) ** 0.333))
-                        elif initial_conformation == 'random_walk':
+                        elif initial_conformation == "random_walk":
                             data = create_random_walk(step_size=1, N=N)
                         else:
-                            raise ValueError('initial_conformation must either be crumpled or random_walk')
+                            raise ValueError(
+                                "initial_conformation must either be crumpled or random_walk"
+                            )
                         np.save(init_conformation_fpath, data)
                         a.set_data(
                             data, center=True
@@ -400,7 +401,7 @@ if __name__ == "__main__":
     p.add_argument("--from-dir", required=True)
     args = p.parse_args()
     run_dir = Path(args.from_dir)
-    config_fpath = run_dir / "config_resolved.json"
+    config_fpath = run_dir.parent / "config_resolved.json"
     # re-load resolved config from run_dir if you save it there
     cfg = load_config(config_fpath)  # your helper
 
