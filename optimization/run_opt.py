@@ -12,6 +12,10 @@ from scipy import stats
 # from simulation.run_sim_MD import simulate_MD
 
 # HACK: I copied these files for now
+import matplotlib
+
+matplotlib.use("Agg")
+
 from md_backend_slurm import run_md_slurm
 from sim_config import SimConfig
 from run_sim_LE import simulate_LE
@@ -33,9 +37,17 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+
+def safe_savefig(fig, path, *, dpi=300, bbox_inches="tight"):
+    try:
+        fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches)
+    except Exception as e:
+        log.warning("Plot save failed for %s: %r", path, e)
+    finally:
+        plt.close(fig)
+
+
 # Parellelize this function
-
-
 def run_LE(
     sim_cfg: SimConfig,
     opt_cfg: OptConfig,
@@ -79,8 +91,7 @@ def run_LE(
         loop_occupancy_array[:10000, :], aspect="auto", cmap="gnuplot2", vmin=0, vmax=1
     )
     ax.set_xlim(2000, 6000)
-    plt.savefig(kymograph_fpath, dpi=300, bbox_inches="tight")
-    plt.close()
+    safe_savefig(fig, kymograph_fpath, dpi=300, bbox_inches="tight")
 
     # Plot loop length distribution at last timepoint
     # TODO: log objective functions for each run
@@ -138,8 +149,7 @@ def run_LE(
             )
             fig, ax = plt.subplots()
             ax.hist(loop_size)
-            plt.savefig(loop_size_fpath, dpi=300, bbox_inches="tight")
-            plt.close()
+            safe_savefig(fig, loop_size_fpath, dpi=300, bbox_inches="tight")
 
             curr_target = target_value_list[idx_condensin_type]
             if idx_condensin_type == 0:
@@ -251,11 +261,16 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
         log.info("Found previous Bayesian optimization run in this directory")
         log.info("Loading the previous result...")
         client = Client.load_from_json_file(filepath=opt_result_fpath)
+        client_summary = client.summarize()
+        prev_num_trials = client_summary.trial_index.iloc[0]
+        log.info(f"Found {prev_num_trials} previous Bayesian attempts")
+        prev_num_trials += 1  # Next possible trial
         log.info("Success")
     else:
         log.info("No previous Bayesian optimization run found in this directory")
         log.info("Create a new client...")
         client = Client()
+        prev_num_trials = 0
         log.info("Success")
 
         parameters = [
@@ -343,8 +358,10 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
             )
 
         for idx_trial in range(num_trials):
+            idx_trial += prev_num_trials
+
             log.info(
-                f"Current optimization round = {idx_trial + 1} out of {num_trials}..."
+                f"Current optimization round = {idx_trial + 1} out of {num_trials + prev_num_trials}..."
             )
             # Nominate and define parameters
             trial = client.get_next_trials(max_trials=1)
@@ -455,3 +472,7 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
             #     f.write(json.dumps(record) + "\n")
 
             # log.info(f"MD runtime logged to {runtime_MD_fpath}")
+
+
+if __name__ == "__main__":
+    passs
