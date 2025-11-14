@@ -129,7 +129,7 @@ class SimConfig(BaseModel, extra=Extra.forbid):
         description="Standard deviation of bond lenght between Condensin arms.",
     )
     gpu_device: str = Field("0", description="GPU device used to run MD simulation.")
-    initial_conformation: Literal["random_walk", "crumpled"] = Field(
+    initial_conformation: Literal["random_walk", "random_walk_z", "crumpled"] = Field(
         "crumpled", description="Initial conformation for MD simulation"
     )
 

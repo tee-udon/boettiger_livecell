@@ -225,8 +225,12 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         data = grow_cubic(N, int((N / density) ** 0.333))
     elif initial_conformation == "random_walk":
         data = create_random_walk(step_size=1, N=N)
+    elif initial_conformation == "random_walk_z":
+        data = create_random_walk_positivez(step_size=1, N=N)
     else:
-        raise ValueError("initial_conformation must either be crumpled or random_walk")
+        raise ValueError(
+            "initial_conformation must either be crumpled or random_walk or random_walk_z"
+        )
 
     # Save the initial conformation
     init_conformation_fpath = base_dir / "init_conformation.npy"
