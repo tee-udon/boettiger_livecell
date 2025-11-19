@@ -339,13 +339,11 @@ class SMC:
 
     def walk(self):
         # Walking step if not stalled at barrier or another SMC. Each arm treated separately.
-        if self.extrusion_rate > 1:
-            step_size = np.round(self.extrusion_rate)
-        else:
-            step_size = 1
+        step_size = 1
 
         # Now when it walks if there are multiple SMCs in a row, this is buggy
         # because it should also check if there are other SMCs after
+        # Now this issue is fixed because we walk 1 step at a time! 
 
         if self.extrusion_sided == 2:
             if not (
@@ -412,142 +410,150 @@ def update_SMC_sim(CTCFs: list, SMCs: list):
     )  # Initialize empty list for gathering loop positions based on SMC arm positions.
     for i in range(len(SMCs)):
         s = SMCs[i]
-        if s.extrusion_rate > 1:
-            capture_dist = (
-                s.extrusion_rate
-            )  # Prevents unintentioanl passing when using larger step sizes
-        else:
+        extrusion_speed = s.extrusion_rate
+        for _ in range(extrusion_speed):
             capture_dist = 1
-        s.update()  # Update all SMCs to let them bind/unbind or take a step.
+            s.update()  # Update all SMCs to let them bind/unbind or take a step.
 
-        if s.bound:  # Complex has to be bound to form a loop
-            loop_pos[i, 0] = s.l_pos
-            loop_pos[i, 1] = (
-                s.r_pos
-            )  # Appends the left and right arm positions of each bound SMC as a loop.
+            if s.bound:  # Complex has to be bound to form a loop
+                loop_pos[i, 0] = s.l_pos
+                loop_pos[i, 1] = s.r_pos
+                # Appends the left and right arm positions of each bound SMC as a loop.
 
-            if (
-                (s.SMC_crash_prob > 0) and not (s.SMC_bound_l and s.SMC_bound_r)
-            ):  # If cannot stall, or if already stalled in both arms no further checks necessary.
-                l_time_so_far = 0
-                r_time_so_far = 0
+                if (
+                    (s.SMC_crash_prob > 0) and not (s.SMC_bound_l and s.SMC_bound_r)
+                ):  # If cannot stall, or if already stalled in both arms no further checks necessary.
+                    l_time_so_far = 0
+                    r_time_so_far = 0
 
-                if s.centromere_type == 0:
-                    if (
-                        np.abs(s.l_pos - s.centromere_upper_bound) <= capture_dist
-                    ) and (
-                        s.centromere_upper_bound <= s.l_pos
-                    ):  # Left arm steps into centromere
-                        s.SMC_bound_l = True
-                        s.current_stall_id_l = 2  # Holder for centromere type
-                        l_time_so_far = 10000000  # Infinite
-
-                    if (
-                        np.abs(s.r_pos - s.centromere_lower_bound) <= capture_dist
-                    ) and (
-                        s.centromere_lower_bound >= s.r_pos
-                    ):  # Right arm steps into centromere
-                        s.SMC_bound_r = True
-                        s.current_stall_id_r = 2
-                        r_time_so_far = 10000000
-
-                    if (
-                        s.centromere_lower_bound <= s.l_pos <= s.centromere_upper_bound
-                    ):  # Left arm starts in centromere
-                        s.SMC_bound_l = True
-                        s.current_stall_id_l = 2  # Holder for centromere type
-                        l_time_so_far = 100000  # Infinite
-
-                    if (
-                        s.centromere_lower_bound <= s.r_pos <= s.centromere_upper_bound
-                    ):  # Right arm start in centromere
-                        s.SMC_bound_r = True
-                        s.current_stall_id_r = 2
-                        r_time_so_far = 1000000
-
-                for j, other_s in enumerate(SMCs):
-                    if other_s.bound:
-                        if j == i:
-                            continue
-
-                        # Bug comes from when there are multiple SMCs in the capture dist
-                        # The final id comes from the final other SMCs that is in the capture dist
-                        # I need to make sure that I only look at the SMCs that are closest to the reference
-                        # pdist
-                        # Also this does not take into account the directionality of the movement
-                        # first we need to check the if it wants to move in that direction
-                        # And this is important for unidirectional extrusion
-
-                        # so now I want to make sure that it is the closest SMCs that I care about
-                        # this still lead to jumping over
-
-                        # i need to look at the maximum stall_time id in the capture dist
-                        # now it works!
-
-                        crash_lifetime = s.SMC_crash_lifetime[other_s.SMC_type]
+                    if s.centromere_type == 0:
+                        if (
+                            np.abs(s.l_pos - s.centromere_upper_bound) <= capture_dist
+                        ) and (
+                            s.centromere_upper_bound <= s.l_pos
+                        ):  # Left arm steps into centromere
+                            s.SMC_bound_l = True
+                            s.current_stall_id_l = 2  # Holder for centromere type
+                            l_time_so_far = np.inf  # Infinite
 
                         if (
-                            not s.SMC_bound_l
-                            and (s.extrusion_sided == 2 or s.extrusion_direction == -1)
-                            and crash_lifetime >= l_time_so_far
-                        ):
-                            if s.SMC_crash_prob > np.random.random():
-                                if (
-                                    np.abs(s.l_pos - other_s.l_pos) <= capture_dist
-                                ) and (
-                                    other_s.l_pos - s.l_pos < 0
-                                ):  # and other_s.CTCF_bound_l:
-                                    s.SMC_bound_l = True
-                                    s.current_stall_id_l = other_s.SMC_type
-                                    # other_s.SMC_bound_l = True #assume both stall if one does.
-
-                                    # other_s.current_stall_id_l = s.SMC_type
-                                    l_time_so_far = crash_lifetime
-                                    # s.l_pos = other_s.l_pos
-                                elif (
-                                    np.abs(s.l_pos - other_s.r_pos) <= capture_dist
-                                ) and (
-                                    other_s.r_pos - s.l_pos < 0
-                                ):  # and other_s.CTCF_bound_r:
-                                    s.SMC_bound_l = True
-                                    # other_s.SMC_bound_r = True #assume both stall if one does.
-                                    s.current_stall_id_l = other_s.SMC_type
-                                    # other_s.current_stall_id_r = s.SMC_type
-                                    l_time_so_far = crash_lifetime
-                                    # s.l_pos = other_s.r_pos
-                                else:
-                                    s.SMC_bound_l = False
+                            np.abs(s.r_pos - s.centromere_lower_bound) <= capture_dist
+                        ) and (
+                            s.centromere_lower_bound >= s.r_pos
+                        ):  # Right arm steps into centromere
+                            s.SMC_bound_r = True
+                            s.current_stall_id_r = 2
+                            r_time_so_far = np.inf
 
                         if (
-                            not s.SMC_bound_r
-                            and (s.extrusion_sided == 2 or s.extrusion_direction == 1)
-                            and crash_lifetime >= r_time_so_far
-                        ):
-                            if s.SMC_crash_prob > np.random.random():
-                                if (
-                                    np.abs(s.r_pos - other_s.l_pos) <= capture_dist
-                                ) and (
-                                    other_s.l_pos - s.r_pos > 0
-                                ):  # and other_s.CTCF_bound_l:
-                                    s.SMC_bound_r = True
-                                    # other_s.SMC_bound_l = True #assume both stall if one does.
-                                    s.current_stall_id_r = other_s.SMC_type
-                                    # other_s.current_stall_id_l = s.SMC_type
-                                    r_time_so_far = crash_lifetime
-                                    # s.r_pos = other_s.l_pos
-                                elif (
-                                    np.abs(s.r_pos - other_s.r_pos) <= capture_dist
-                                ) and (
-                                    other_s.r_pos - s.r_pos > 0
-                                ):  # and other_s.CTCF_bound_r:
-                                    s.SMC_bound_r = True
-                                    # other_s.SMC_bound_r = True #assume both stall if one does.
-                                    s.current_stall_id_r = other_s.SMC_type
-                                    # other_s.current_stall_id_r = s.SMC_type
-                                    r_time_so_far = crash_lifetime
-                                    # s.r_pos = other_s.r_pos
-                                else:
-                                    s.SMC_bound_r = False
+                            s.centromere_lower_bound
+                            <= s.l_pos
+                            <= s.centromere_upper_bound
+                        ):  # Left arm starts in centromere
+                            s.SMC_bound_l = True
+                            s.current_stall_id_l = 2  # Holder for centromere type
+                            l_time_so_far = np.inf  # Infinite
+
+                        if (
+                            s.centromere_lower_bound
+                            <= s.r_pos
+                            <= s.centromere_upper_bound
+                        ):  # Right arm start in centromere
+                            s.SMC_bound_r = True
+                            s.current_stall_id_r = 2
+                            r_time_so_far = np.inf
+
+                    # left_crash_list = []
+                    # right_crash_list = []
+
+                    for j, other_s in enumerate(SMCs):
+                        if other_s.bound:
+                            if j == i:
+                                continue
+
+                            # Bug comes from when there are multiple SMCs in the capture dist
+                            # The final id comes from the final other SMCs that is in the capture dist
+                            # I need to make sure that I only look at the SMCs that are closest to the reference
+                            # pdist
+                            # Also this does not take into account the directionality of the movement
+                            # first we need to check the if it wants to move in that direction
+                            # And this is important for unidirectional extrusion
+
+                            # so now I want to make sure that it is the closest SMCs that I care about
+                            # this still lead to jumping over
+
+                            # i need to look at the maximum stall_time id in the capture dist
+                            # now it works!
+
+                            crash_lifetime = s.SMC_crash_lifetime[other_s.SMC_type]
+
+                            if (
+                                not s.SMC_bound_l
+                                and (
+                                    s.extrusion_sided == 2
+                                    or s.extrusion_direction == -1
+                                )
+                                and crash_lifetime >= l_time_so_far
+                            ):
+                                if s.SMC_crash_prob > np.random.random():
+                                    if (
+                                        np.abs(s.l_pos - other_s.l_pos) <= capture_dist
+                                    ) and (
+                                        other_s.l_pos - s.l_pos <= 0
+                                    ):  # and other_s.CTCF_bound_l:
+                                        s.SMC_bound_l = True
+                                        s.current_stall_id_l = other_s.SMC_type
+                                        # other_s.SMC_bound_l = True #assume both stall if one does.
+
+                                        # other_s.current_stall_id_l = s.SMC_type
+                                        l_time_so_far = crash_lifetime
+                                        # s.l_pos = other_s.l_pos
+                                    elif (
+                                        np.abs(s.l_pos - other_s.r_pos) <= capture_dist
+                                    ) and (
+                                        other_s.r_pos - s.l_pos <= 0
+                                    ):  # and other_s.CTCF_bound_r:
+                                        s.SMC_bound_l = True
+                                        # other_s.SMC_bound_r = True #assume both stall if one does.
+                                        s.current_stall_id_l = other_s.SMC_type
+                                        # other_s.current_stall_id_r = s.SMC_type
+                                        l_time_so_far = crash_lifetime
+                                        # s.l_pos = other_s.r_pos
+                                    else:
+                                        s.SMC_bound_l = False
+
+                            if (
+                                not s.SMC_bound_r
+                                and (
+                                    s.extrusion_sided == 2 or s.extrusion_direction == 1
+                                )
+                                and crash_lifetime >= r_time_so_far
+                            ):
+                                if s.SMC_crash_prob > np.random.random():
+                                    if (
+                                        np.abs(s.r_pos - other_s.l_pos) <= capture_dist
+                                    ) and (
+                                        other_s.l_pos - s.r_pos >= 0
+                                    ):  # and other_s.CTCF_bound_l:
+                                        s.SMC_bound_r = True
+                                        # other_s.SMC_bound_l = True #assume both stall if one does.
+                                        s.current_stall_id_r = other_s.SMC_type
+                                        # other_s.current_stall_id_l = s.SMC_type
+                                        r_time_so_far = crash_lifetime
+                                        # s.r_pos = other_s.l_pos
+                                    elif (
+                                        np.abs(s.r_pos - other_s.r_pos) <= capture_dist
+                                    ) and (
+                                        other_s.r_pos - s.r_pos >= 0
+                                    ):  # and other_s.CTCF_bound_r:
+                                        s.SMC_bound_r = True
+                                        # other_s.SMC_bound_r = True #assume both stall if one does.
+                                        s.current_stall_id_r = other_s.SMC_type
+                                        # other_s.current_stall_id_r = s.SMC_type
+                                        r_time_so_far = crash_lifetime
+                                        # s.r_pos = other_s.r_pos
+                                    else:
+                                        s.SMC_bound_r = False
 
     avail_sites = CTCFs[0].avail_sites
     for i in range(len(CTCFs)):
