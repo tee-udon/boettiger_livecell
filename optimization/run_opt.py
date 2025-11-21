@@ -178,9 +178,14 @@ def run_LE(
     loss_mean = df["loss_fn"].mean()
 
     csv_fpath = curr_run_dir / f"{condition}_Trial{run_id}_Objective1D.csv"
+
     df.to_csv(csv_fpath, index=False)
 
     log.info(f"Saved losses for run {run_id} ({condition}) to {csv_fpath}")
+
+    # TODO: add save param config for future debug
+    param_fpath = curr_run_dir / f"{condition}_Trial{run_id}_Objective1D_param.json"
+    param_fpath.write_text(sim_cfg.model_dump_json(indent=2))
 
     # If simulation_type == '1D' then we can delete all the .npy files and .h5 because it is not needed downstream
     if simulation_type == "1D":
@@ -236,6 +241,7 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
     num_trials = cfg.num_trials
     simulation_type = cfg.simulation_type
     objective_calculation_option = cfg.objective_calculation_option
+    objective_sample_option = cfg.objective_sample_option
 
     opt_result_fpath = run_dir / "opt_result.json"
 
@@ -243,12 +249,27 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
     log.info(f"Simulation type is {simulation_type}")
     log.info(f"Calculate objective functions at {objective_calculation_option}")
     log.info(f"GPU device is {gpu_device}")
+    log.info(f"Experimental condition is {objective_sample_option}")
 
     if simulation_type == "1D":
-        objective = "-loss_BothCond, -loss_Cond1Only, -loss_Cond2Only"  # Trying to minimize loss
+        if objective_sample_option == "All":
+            objective = "-loss_BothCond, -loss_Cond1Only, -loss_Cond2Only"  # Trying to minimize loss
+        elif objective_sample_option == "Both Condensin":
+            objective = "-loss_BothCond"
+        elif objective_sample_option == "Condensin 1 Only":
+            objective = "-loss_Cond1Only"
+        elif objective_sample_option == "Condensin 2 Only":
+            objective = "-loss_Cond2Only"
     elif simulation_type == "MD":
         # log scale correlation
-        objective = "reward_BothCond, reward_Cond1Only, reward_Cond2Only"  # trying to maximize score/correlation
+        if objective_sample_option == "All":
+            objective = "reward_BothCond, reward_Cond1Only, reward_Cond2Only"  # trying to maximize score/correlation
+        elif objective_sample_option == "Both Condensin":
+            objective = "reward_BothCond"
+        elif objective_sample_option == "Condensin 1 Only":
+            objective = "reward_Cond1Only"
+        elif objective_sample_option == "Condensin 2 Only":
+            objective = "reward_Cond2Only"
 
     # Now define a new SimConfig object for downstream run
     # Transfer hyperparameters from OptConfig
@@ -361,7 +382,7 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
             idx_trial += prev_num_trials
 
             log.info(
-                f"Current optimization round = {idx_trial + 1} out of {num_trials + prev_num_trials}..."
+                f"Current optimization round = {idx_trial} out of {num_trials + prev_num_trials}..."
             )
             # Nominate and define parameters
             trial = client.get_next_trials(max_trials=1)
@@ -369,6 +390,7 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
             trial_params = list(trial.values())[0]
 
             # Now transfer nominated parameters to SimConfig object
+            # Maybe sim_cfg does not like the Cond1 Only and Cond2 Only
             sim_cfg.condensin_speed_list = (
                 trial_params["cond1_speed"],
                 trial_params["cond2_speed"],
@@ -402,23 +424,47 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
             log.info("Simulating 1D Loop Extrusion...")
             # TODO: paralellize and run_dir has to be different in different conditions
             # change cfg accordingly
-            with ThreadPoolExecutor(max_workers=3) as ex:
-                futures = {
-                    ex.submit(
-                        run_LE, sim_cfg, cfg, run_dir, idx_trial, "BothCond"
-                    ): "loss_BothCond",
-                    ex.submit(
-                        run_LE, sim_cfg_Cond1Only, cfg, run_dir, idx_trial, "Cond1Only"
-                    ): "loss_Cond1Only",
-                    ex.submit(
-                        run_LE, sim_cfg_Cond2Only, cfg, run_dir, idx_trial, "Cond2Only"
-                    ): "loss_Cond2Only",
-                }
+            if objective_sample_option == "All":
+                with ThreadPoolExecutor(max_workers=3) as ex:
+                    futures = {
+                        ex.submit(
+                            run_LE, sim_cfg, cfg, run_dir, idx_trial, "BothCond"
+                        ): "loss_BothCond",
+                        ex.submit(
+                            run_LE,
+                            sim_cfg_Cond1Only,
+                            cfg,
+                            run_dir,
+                            idx_trial,
+                            "Cond1Only",
+                        ): "loss_Cond1Only",
+                        ex.submit(
+                            run_LE,
+                            sim_cfg_Cond2Only,
+                            cfg,
+                            run_dir,
+                            idx_trial,
+                            "Cond2Only",
+                        ): "loss_Cond2Only",
+                    }
 
-                obj_fn_dict = {}
-                for fut in as_completed(futures):
-                    metric = futures[fut]
-                    obj_fn_dict[metric] = float(fut.result())
+                    obj_fn_dict = {}
+                    for fut in as_completed(futures):
+                        metric = futures[fut]
+                        obj_fn_dict[metric] = float(fut.result())
+            elif objective_sample_option == "Both Condensin":
+                loss_fn = float(run_LE(sim_cfg, cfg, run_dir, idx_trial, "BothCond"))
+                obj_fn_dict = {"loss_BothCond": loss_fn}
+            elif objective_sample_option == "Condensin 1 Only":
+                loss_fn = float(
+                    run_LE(sim_cfg_Cond1Only, cfg, run_dir, idx_trial, "Cond1Only")
+                )
+                obj_fn_dict = {"loss_Cond1Only": loss_fn}
+            elif objective_sample_option == "Condensin 2 Only":
+                loss_fn = float(
+                    run_LE(sim_cfg_Cond2Only, cfg, run_dir, idx_trial, "Cond2Only")
+                )
+                obj_fn_dict = {"loss_Cond2Only": loss_fn}
 
             # If simulation_type == '1D', save data and continue to the next trial
             if simulation_type == "1D":
@@ -475,4 +521,4 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
 
 
 if __name__ == "__main__":
-    passs
+    pass

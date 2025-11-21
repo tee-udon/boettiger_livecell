@@ -238,8 +238,8 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     def check_condensin_speed_list(cls, v):
         if len(v) != 2:
             raise ValueError("condensin_speed_list must contain exactly 2 values")
-        if any(val <= 0 for val in v):
-            raise ValueError("All speeds must be > 0")
+        if any(val < 1 for val in v):
+            raise ValueError("All speeds must be >= 1")
         return v
 
     @field_validator("condensin_speed_sd_list")
