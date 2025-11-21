@@ -178,9 +178,14 @@ def run_LE(
     loss_mean = df["loss_fn"].mean()
 
     csv_fpath = curr_run_dir / f"{condition}_Trial{run_id}_Objective1D.csv"
+
     df.to_csv(csv_fpath, index=False)
 
     log.info(f"Saved losses for run {run_id} ({condition}) to {csv_fpath}")
+
+    # TODO: add save param config for future debug
+    param_fpath = curr_run_dir / f"{condition}_Trial{run_id}_Objective1D_param.json"
+    param_fpath.write_text(sim_cfg.model_dump_json(indent=2))
 
     # If simulation_type == '1D' then we can delete all the .npy files and .h5 because it is not needed downstream
     if simulation_type == "1D":
@@ -236,6 +241,7 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
     num_trials = cfg.num_trials
     simulation_type = cfg.simulation_type
     objective_calculation_option = cfg.objective_calculation_option
+    objective_sample_option = cfg.objective_sample_option
 
     opt_result_fpath = run_dir / "opt_result.json"
 
@@ -243,20 +249,73 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
     log.info(f"Simulation type is {simulation_type}")
     log.info(f"Calculate objective functions at {objective_calculation_option}")
     log.info(f"GPU device is {gpu_device}")
+    log.info(f"Experimental condition is {objective_sample_option}")
 
     if simulation_type == "1D":
-        objective = "-loss_BothCond, -loss_Cond1Only, -loss_Cond2Only"  # Trying to minimize loss
+        if objective_sample_option == "All":
+            objective = "-loss_BothCond, -loss_Cond1Only, -loss_Cond2Only"  # Trying to minimize loss
+        elif objective_sample_option == "Both Condensin":
+            objective = "-loss_BothCond"
+        elif objective_sample_option == "Condensin 1 Only":
+            objective = "-loss_Cond1Only"
+        elif objective_sample_option == "Condensin 2 Only":
+            objective = "-loss_Cond2Only"
     elif simulation_type == "MD":
         # log scale correlation
-        objective = "reward_BothCond, reward_Cond1Only, reward_Cond2Only"  # trying to maximize score/correlation
+        if objective_sample_option == "All":
+            objective = "reward_BothCond, reward_Cond1Only, reward_Cond2Only"  # trying to maximize score/correlation
+        elif objective_sample_option == "Both Condensin":
+            objective = "reward_BothCond"
+        elif objective_sample_option == "Condensin 1 Only":
+            objective = "reward_Cond1Only"
+        elif objective_sample_option == "Condensin 2 Only":
+            objective = "reward_Cond2Only"
 
     # Now define a new SimConfig object for downstream run
     # Transfer hyperparameters from OptConfig
     # log.debug(SimConfig.model.fields.keys())
     shared_fields = SimConfig.model_fields.keys() & OptConfig.model_fields.keys()
 
+    # 1) Build sim_cfg once from cfg for all shared / non-optimized fields
     sim_cfg = SimConfig(**{f: getattr(cfg, f) for f in shared_fields})
 
+    # 2) Central spec of all optimization parameters + their range fields on cfg
+    PARAM_SPECS = [
+        ("cond1_speed", "float", "cond1_speed_range"),
+        ("cond2_speed", "float", "cond2_speed_range"),
+        ("cond1_cond1_stall_time", "float", "cond1_cond1_stall_time_range"),
+        ("cond1_cond2_stall_time", "float", "cond1_cond2_stall_time_range"),
+        ("cond2_cond1_stall_time", "float", "cond2_cond1_stall_time_range"),
+        ("cond2_cond2_stall_time", "float", "cond2_cond2_stall_time_range"),
+        ("cond1_stall_probability", "float", "cond1_stall_probability_range"),
+        ("cond2_stall_probability", "float", "cond2_stall_probability_range"),
+        ("cond1_num", "int", "cond1_num_range"),
+        ("cond2_num", "int", "cond2_num_range"),
+        ("cond1_bound_lifetime", "float", "cond1_bound_lifetime_range"),
+        ("cond2_bound_lifetime", "float", "cond2_bound_lifetime_range"),
+        ("cond1_unbound_lifetime", "float", "cond1_unbound_lifetime_range"),
+        ("cond2_unbound_lifetime", "float", "cond2_unbound_lifetime_range"),
+    ]
+
+    # 3) Decide which params are fixed vs. optimized, based on lb == ub
+    fixed_ax_params: dict[str, float | int] = {}
+    parameter_configs: list[RangeParameterConfig] = []
+
+    for name, ptype, range_attr in PARAM_SPECS:
+        lb, ub = getattr(cfg, range_attr)  # e.g. cfg.cond1_speed_range
+        if lb == ub:
+            # Don't add to Ax search space; treat as fixed
+            fixed_ax_params[name] = lb
+        else:
+            parameter_configs.append(
+                RangeParameterConfig(
+                    name=name,
+                    parameter_type=ptype,
+                    bounds=(lb, ub),
+                )
+            )
+
+    # 4) Load or create Ax client as before, but only with variable parameters
     if opt_result_fpath.exists():
         log.info("Found previous Bayesian optimization run in this directory")
         log.info("Loading the previous result...")
@@ -273,79 +332,11 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
         prev_num_trials = 0
         log.info("Success")
 
-        parameters = [
-            RangeParameterConfig(
-                name="cond1_speed", parameter_type="float", bounds=cfg.cond1_speed_range
-            ),
-            RangeParameterConfig(
-                name="cond2_speed", parameter_type="float", bounds=cfg.cond2_speed_range
-            ),
-            RangeParameterConfig(
-                name="cond1_cond1_stall_time",
-                parameter_type="float",
-                bounds=cfg.cond1_cond1_stall_time_range,
-            ),
-            RangeParameterConfig(
-                name="cond1_cond2_stall_time",
-                parameter_type="float",
-                bounds=cfg.cond1_cond2_stall_time_range,
-            ),
-            RangeParameterConfig(
-                name="cond2_cond1_stall_time",
-                parameter_type="float",
-                bounds=cfg.cond2_cond1_stall_time_range,
-            ),
-            RangeParameterConfig(
-                name="cond2_cond2_stall_time",
-                parameter_type="float",
-                bounds=cfg.cond2_cond2_stall_time_range,
-            ),
-            RangeParameterConfig(
-                name="cond1_stall_probability",
-                parameter_type="float",
-                bounds=cfg.cond1_stall_probability_range,
-            ),
-            RangeParameterConfig(
-                name="cond2_stall_probability",
-                parameter_type="float",
-                bounds=cfg.cond2_stall_probability_range,
-            ),
-            RangeParameterConfig(
-                name="cond1_num", parameter_type="int", bounds=cfg.cond1_num_range
-            ),
-            RangeParameterConfig(
-                name="cond2_num", parameter_type="int", bounds=cfg.cond2_num_range
-            ),
-            RangeParameterConfig(
-                name="cond1_bound_lifetime",
-                parameter_type="float",
-                bounds=cfg.cond1_bound_lifetime_range,
-            ),
-            RangeParameterConfig(
-                name="cond2_bound_lifetime",
-                parameter_type="float",
-                bounds=cfg.cond2_bound_lifetime_range,
-            ),
-            RangeParameterConfig(
-                name="cond1_unbound_lifetime",
-                parameter_type="float",
-                bounds=cfg.cond1_unbound_lifetime_range,
-            ),
-            RangeParameterConfig(
-                name="cond2_unbound_lifetime",
-                parameter_type="float",
-                bounds=cfg.cond2_unbound_lifetime_range,
-            ),
-        ]
-
-        client.configure_experiment(parameters=parameters)
+        # Only parameters with lb != ub are passed to Ax
+        client.configure_experiment(parameters=parameter_configs)
         client.configure_optimization(objective=objective)
 
-    # TODO: incorporate Ax parameter nomination in the pipeline
-    # TODO: check type of objective function
-    # TODO: define json filepath
-    # Idea: we need to define cfg for 1D simulation based on Ax parameter nomination
-
+    # 5) Optimization loop
     for idx_sister in range(num_sister_chromatids):
         log.info(
             f"Simulating sister {idx_sister + 1} out of {num_sister_chromatids}..."
@@ -359,42 +350,48 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
 
         for idx_trial in range(num_trials):
             idx_trial += prev_num_trials
-
             log.info(
-                f"Current optimization round = {idx_trial + 1} out of {num_trials + prev_num_trials}..."
+                f"Current optimization round = {idx_trial} "
+                f"out of {num_trials + prev_num_trials}..."
             )
-            # Nominate and define parameters
-            trial = client.get_next_trials(max_trials=1)
 
+            # Get Ax-suggested parameters (only for those with lb != ub)
+            trial = client.get_next_trials(max_trials=1)
             trial_params = list(trial.values())[0]
 
-            # Now transfer nominated parameters to SimConfig object
+            # Merge in the fixed parameters (lb == ub) so downstream code
+            # can treat them uniformly
+            all_params = {**fixed_ax_params, **trial_params}
+
+            # Transfer to sim_cfg
             sim_cfg.condensin_speed_list = (
-                trial_params["cond1_speed"],
-                trial_params["cond2_speed"],
+                all_params["cond1_speed"],
+                all_params["cond2_speed"],
             )
             sim_cfg.condensin_1_stall_time_list = (
-                trial_params["cond1_cond1_stall_time"],
-                trial_params["cond1_cond2_stall_time"],
+                all_params["cond1_cond1_stall_time"],
+                all_params["cond1_cond2_stall_time"],
             )
             sim_cfg.condensin_2_stall_time_list = (
-                trial_params["cond2_cond1_stall_time"],
-                trial_params["cond2_cond2_stall_time"],
+                all_params["cond2_cond1_stall_time"],
+                all_params["cond2_cond2_stall_time"],
             )
             sim_cfg.condensin_stall_probability_list = (
-                trial_params["cond1_stall_probability"],
-                trial_params["cond2_stall_probability"],
+                all_params["cond1_stall_probability"],
+                all_params["cond2_stall_probability"],
             )
-            sim_cfg.num_condensin_1 = trial_params["cond1_num"]
-            sim_cfg.num_condensin_2 = trial_params["cond2_num"]
+            sim_cfg.num_condensin_1 = all_params["cond1_num"]
+            sim_cfg.num_condensin_2 = all_params["cond2_num"]
             sim_cfg.condensin_bound_lifetime_list = (
-                trial_params["cond1_bound_lifetime"],
-                trial_params["cond2_bound_lifetime"],
+                all_params["cond1_bound_lifetime"],
+                all_params["cond2_bound_lifetime"],
             )
             sim_cfg.condensin_unbound_lifetime_list = (
-                trial_params["cond1_unbound_lifetime"],
-                trial_params["cond2_unbound_lifetime"],
+                all_params["cond1_unbound_lifetime"],
+                all_params["cond2_unbound_lifetime"],
             )
+
+            # Cond1-only / Cond2-only variants
             sim_cfg_Cond1Only = sim_cfg.model_copy(deep=True)
             sim_cfg_Cond1Only.num_condensin_2 = 0
             sim_cfg_Cond2Only = sim_cfg.model_copy(deep=True)
@@ -402,23 +399,47 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
             log.info("Simulating 1D Loop Extrusion...")
             # TODO: paralellize and run_dir has to be different in different conditions
             # change cfg accordingly
-            with ThreadPoolExecutor(max_workers=3) as ex:
-                futures = {
-                    ex.submit(
-                        run_LE, sim_cfg, cfg, run_dir, idx_trial, "BothCond"
-                    ): "loss_BothCond",
-                    ex.submit(
-                        run_LE, sim_cfg_Cond1Only, cfg, run_dir, idx_trial, "Cond1Only"
-                    ): "loss_Cond1Only",
-                    ex.submit(
-                        run_LE, sim_cfg_Cond2Only, cfg, run_dir, idx_trial, "Cond2Only"
-                    ): "loss_Cond2Only",
-                }
+            if objective_sample_option == "All":
+                with ThreadPoolExecutor(max_workers=3) as ex:
+                    futures = {
+                        ex.submit(
+                            run_LE, sim_cfg, cfg, run_dir, idx_trial, "BothCond"
+                        ): "loss_BothCond",
+                        ex.submit(
+                            run_LE,
+                            sim_cfg_Cond1Only,
+                            cfg,
+                            run_dir,
+                            idx_trial,
+                            "Cond1Only",
+                        ): "loss_Cond1Only",
+                        ex.submit(
+                            run_LE,
+                            sim_cfg_Cond2Only,
+                            cfg,
+                            run_dir,
+                            idx_trial,
+                            "Cond2Only",
+                        ): "loss_Cond2Only",
+                    }
 
-                obj_fn_dict = {}
-                for fut in as_completed(futures):
-                    metric = futures[fut]
-                    obj_fn_dict[metric] = float(fut.result())
+                    obj_fn_dict = {}
+                    for fut in as_completed(futures):
+                        metric = futures[fut]
+                        obj_fn_dict[metric] = float(fut.result())
+            elif objective_sample_option == "Both Condensin":
+                loss_fn = float(run_LE(sim_cfg, cfg, run_dir, idx_trial, "BothCond"))
+                obj_fn_dict = {"loss_BothCond": loss_fn}
+            elif objective_sample_option == "Condensin 1 Only":
+                loss_fn = float(
+                    run_LE(sim_cfg_Cond1Only, cfg, run_dir, idx_trial, "Cond1Only")
+                )
+                obj_fn_dict = {"loss_Cond1Only": loss_fn}
+            elif objective_sample_option == "Condensin 2 Only":
+                loss_fn = float(
+                    run_LE(sim_cfg_Cond2Only, cfg, run_dir, idx_trial, "Cond2Only")
+                )
+                obj_fn_dict = {"loss_Cond2Only": loss_fn}
 
             # If simulation_type == '1D', save data and continue to the next trial
             if simulation_type == "1D":
@@ -475,4 +496,4 @@ def run(cfg_payload: dict, run_dir: Path) -> None:
 
 
 if __name__ == "__main__":
-    passs
+    pass

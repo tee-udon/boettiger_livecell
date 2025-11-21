@@ -43,6 +43,15 @@ class OptConfig(BaseModel, extra=Extra.forbid):
         description="Simulation type used for Bayesian optimization routine. Can either be '1D' or 'MD'",
     )
 
+    # Sample to calculate objective functions
+    objective_sample_option: Literal[
+        "All", "Both Condensin", "Condensin 1 Only", "Condensin 2 Only"
+    ] = Field(
+        "All",
+        description="Option to simulate which experimental condition and calculate loss function accordingly.",
+    )
+    # Ignore other loss functions that are not relevant
+
     # When to calculate objective fucntions
     objective_calculation_option: Literal["Last timepoint", "All timepoints"] = Field(
         "Last timepoint",
@@ -61,7 +70,8 @@ class OptConfig(BaseModel, extra=Extra.forbid):
     # It should be a scalar
     # On the other hand, "MD" option score function is recommended (maximizing the correlation to P(s) curve)
     # In this case, objective should be a vector
-    # TODO: Make sure that this is validated against different options. Check
+
+    # TODO: Add warning about objective sample option and ignore some of the input
 
     # Default values are objective function for 1D optimization problem
     # Unit in Mb
@@ -311,8 +321,8 @@ class OptConfig(BaseModel, extra=Extra.forbid):
     def check_range(cls, v):
         if len(v) != 2:
             raise ValueError("Range must contain exactly 2 values")
-        if any(val <= 0 for val in v):
-            raise ValueError("All speeds must be > 0")
+        if any(val < 1 for val in v):
+            raise ValueError("All speeds must be >= 1")
         if v[0] > v[1]:
             raise ValueError("Lower bound must be less than or equal to upper bound")
         return v
