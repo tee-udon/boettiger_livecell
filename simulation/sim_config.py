@@ -5,6 +5,7 @@ from pydantic import (
     Field,
     Extra,
     field_validator,
+    model_validator,
     computed_field,
     ConfigDict,
 )
@@ -41,44 +42,43 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     num_monomers: int = Field(
         100_000,
         gt=0,
-        description="Number of monomers per sister. Approximately 1 kb/monomer.",
+        description="Number of monomers. Approximately 1 kb/monomer.",
     )
-    condensin_speed_list: Tuple[float, float] = Field(
-        (9.0, 15.0),
-        description="Speed of Condensin 1 and 2 respectively (monomers/timestep). Must be positive.",
+
+    cohesin_speed: float = Field(
+        1.0,
+        ge=1,
+        description="Speed of cohesin (monomers/timestep). Must be greater or equal to 1.",
     )
-    condensin_speed_sd_list: Tuple[float, float] = Field(
-        (0.0, 0.0),
-        description="Standard deviation of Condensin 1 and 2 respectively (monomers/timestep). Must be positive.",
+    cohesin_speed_sd: float = Field(
+        0.0,
+        ge=0,
+        description="Standard deviation of cohesin respectively (monomers/timestep). Must be positive.",
     )
-    condensin_1_stall_time_list: Tuple[float, float] = Field(
-        (113.0, 1.0),
-        description="Expected number of timestep for Condensin 1 to pause upon colliding to Condensin 1 and 2 respectively. Must be at least 1.",
+    cohesin_stall_time: float = Field(
+        1.0,
+        ge=1,
+        description="Expected number of timestep for cohesin to pause upon colliding to other condensin. Must be at least 1.",
     )
-    condensin_2_stall_time_list: Tuple[float, float] = Field(
-        (50.0, 17.0),
-        description="Expected number of timestep for Condensin 2 to pause upon colliding to Condensin 1 and 2 respectively. Must be at least 1.",
+    cohesin_stall_probability: float = Field(
+        1.0,
+        ge=0,
+        le=1,
+        description="Probability of cohesin stall upon colliding other cohesin molecules.",
     )
-    condensin_stall_probability_list: Tuple[float, float] = Field(
-        (1.0, 0.2237),
-        description="Probability of Condensin 1 and 2 to stall upon colliding other Condensin molecules.",
+    num_cohesin: int = Field(1000, ge=0, description="Number of cohesin in the system.")
+    cohesin_bound_lifetime: float = Field(
+        100000,
+        ge=1,
+        description="Expected number of timesteps by which cohesin are bound. Must be at least 1.",
     )
-    num_condensin_1: int = Field(
-        1000, ge=0, description="Number of Condensin 1 in the system."
+    cohesin_unbound_lifetime: float = Field(
+        1,
+        ge=1,
+        description="Expected number of timesteps by which cohesin are unbound. Must be at least 1.",
     )
-    num_condensin_2: int = Field(
-        400, ge=0, description="Number of Condensin 2 in the system."
-    )
-    condensin_bound_lifetime_list: Tuple[float, float] = Field(
-        (801, 1_000_000),
-        description="Expected number of timesteps by which Condensin 1 and 2 are bound. Must be at least 1.",
-    )
-    condensin_unbound_lifetime_list: Tuple[float, float] = Field(
-        (480, 125),
-        description="Expected number of timesteps by which Condensin 1 and 2 are unbound. Must be at least 1.",
-    )
-    extrusion_side_list: Tuple[Literal[1, 2], Literal[1, 2]] = Field(
-        (1, 1), description="Unidirectional vs bidirectional extrusion."
+    extrusion_side: Literal[1, 2] = Field(
+        2, description="Unidirectional vs bidirectional extrusion."
     )
     num_LE_steps: int = Field(
         1800,
@@ -90,8 +90,36 @@ class SimConfig(BaseModel, extra=Extra.forbid):
         ge=0,
         description="Total number of loop extrusion steps pre-exporting. This is useful for LE steady-state study.",
     )
+    cohesin_loading_probability_list: None | List[float] = Field(
+        None,
+        description="List of cohesin loading probability along the genome. It can either be None or a list of length num_monomers. The total probabilty must sum to 1.",
+    )
+    ctcf_site_location_list: None | List[int] = Field(
+        None,
+        description="List of ctcf site locations along the genome. If it is None, then simulation assumes that there is no CTCF in the system.",
+    )
+    ctcf_site_direction_list: None | List[Literal["left", "right", "both"]] = Field(
+        None,
+        description="List of ctcf site directions. If it is None, then the simulation assumes that all CTCF sites can stall cohesin from both direction.",
+    )
+    ctcf_site_stall_probability_list: None | List[float] = Field(
+        None,
+        description="List of ctcf site stalling probability. If it is None, then the simulation assumes that CTCF sites always stall cohesin.",
+    )
+    ctcf_site_stall_time_list: None | List[float] = Field(
+        None,
+        description="List of ctcf site expeted stall time. If it is None, then the simulation assumes that CTCF sites stall cohesin forever.",
+    )
 
     # --- core MD simulation hyperparameter
+    monomer_type_list: None | List[int] = Field(
+        None,
+        description="List of monomer types. If not provided, the simulation assumes that all monomers have similar type (homopolymer).",
+    )
+    attraction_coefficient_matrix: None | List[List[float]] = Field(
+        None,
+        description="Attraction coefficient between monomer types. It can either be None or an N-by-N matrix where N is the number of monomer types. If None, the simulation assumes that monomers do not attract.",
+    )
     repulsion: float = Field(
         5.0, ge=0.0, description="Repulsion constant between monomers."
     )
@@ -101,13 +129,10 @@ class SimConfig(BaseModel, extra=Extra.forbid):
         description="Number of MD timestep at the initialization step to relax the initial conformation.",
     )
     num_MD_steps_per_LE: int = Field(
-        1000, ge=1, description="Number of MD timestep between moving condensin bonds."
-    )
-    attraction_coefficient: float = Field(
-        0.05, ge=0.0, description="Coefficient for monomer stickiness."
+        1000, ge=1, description="Number of MD timestep between moving cohesin bonds."
     )
     attraction_radius: float = Field(
-        1.5,
+        0,
         ge=0.0,
         description="The distance in which monomer stickiness affects the surrounding.",
     )
@@ -133,19 +158,6 @@ class SimConfig(BaseModel, extra=Extra.forbid):
         "crumpled", description="Initial conformation for MD simulation"
     )
 
-    # --- chromosome setting
-    centromere_range_list: Tuple[int, int] = Field(
-        (0, 0),
-        description="The monomer indices of the lower and upper bounds of centromere. (0, 0) if no centromere assigned.",
-    )
-    centromere_type: Literal["stall", "kick"] = Field(
-        "stall",
-        description="Type of condensin/centromere interactions: stall - centromeres stall Condensins indefinitely; kick: centromeres unbind condensin. ",
-    )
-    num_sister_chromatids: Literal[1, 2] = Field(
-        1, description="Number of sister chromatid in the simulation."
-    )
-
     # --- plot setting
     plot_LE: Literal[True, False] = Field(
         True, description="Plot LE simulation result for sanity check."
@@ -158,161 +170,130 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     )
     slurm: Optional[SlurmCfg] = None
 
-    # --- computed hyparameters from user input for downstream simulation pipeline
-    @computed_field(return_type=int, description="Total Condensin in the system.")
-    @property
-    def num_condensin_total(self) -> int:
-        return self.num_condensin_1 + self.num_condensin_2
-
-    @computed_field(
-        return_type=float, description="Fraction of Condensin 1 in the system."
-    )
-    @property
-    def ratio_condensin_1(self) -> float:
-        if self.num_condensin_total > 0:
-            return self.num_condensin_1 / self.num_condensin_total
-        else:
-            return 0
-
-    @computed_field(
-        return_type=float, description="Fraction of Condensin 2 in the system."
-    )
-    @property
-    def ratio_condensin_2(self) -> float:
-        if self.num_condensin_total > 0:
-            return 1 - self.ratio_condensin_1
-        else:
-            return 0
-
-    @computed_field(
-        return_type=Tuple[float, float], description="Tuple of Condensin fractions."
-    )
-    @property
-    def ratio_condensin_list(self) -> Tuple[float, float]:
-        return (self.ratio_condensin_1, self.ratio_condensin_2)
-
-    @computed_field(
-        return_type=Tuple[Tuple[float, float], Tuple[float, float]],
-        description="Matrix of condensin stall time.",
-    )
-    @property
-    def condensin_stall_time_matrix(
-        self,
-    ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        return (self.condensin_1_stall_time_list, self.condensin_2_stall_time_list)
-
-    @computed_field(
-        return_type=Tuple[Tuple[float]], description="Attraction coefficient matrix."
-    )
-    @property
-    def attraction_coefficient_matrix(self) -> Tuple[Tuple[float]]:
-        return ((self.attraction_coefficient,),)
-
-    @computed_field(return_type=List[int], description="Tuple of monomer types.")
-    @property
-    def monomer_type_list(self) -> List[int]:
-        return [0 for _ in range(self.num_monomers)]
-
     # --- bookkeeping
     condition_name: str = ""
     out_dir: str = "runs"
     start_idx_replicate: int = 0
 
     # --- constant parameters for proper internal working of simulation
-    _num_condensin_types: int = PrivateAttr(2)
-    _num_CTCF: int = PrivateAttr(1)
-    _CTCF_sites: List[int] = PrivateAttr([1])
-    _CTCF_site_probability: List[int] = PrivateAttr([1])
-    _CTCF_site_direction: List[int] = PrivateAttr([1])
-    _CTCF_bound_lifetime: int = PrivateAttr(0)
-    _CTCF_unbound_lifetime: int = PrivateAttr(1)
-    _CTCF_condensin_bound_lifetime: int = PrivateAttr(
-        1
-    )  # Condensin does not stall on CTCFs
-    _condensin_CTCF_bound_lifetime_list: Tuple[int, int] = PrivateAttr(
-        (0, 0)
-    )  # Condensin does not stall on CTCFs
+    _num_cohesin_types: int = PrivateAttr(1)
 
     # --- validator
-    @field_validator("condensin_speed_list")
-    def check_condensin_speed_list(cls, v):
-        if len(v) != 2:
-            raise ValueError("condensin_speed_list must contain exactly 2 values")
-        if any(val < 1 for val in v):
-            raise ValueError("All speeds must be >= 1")
-        return v
+    # @model_validator(mode="after")
+    # def check_model(self):
+    #     num_monomers = self.num_monomers
+    #     monomer_type_list = self.monomer_type_list
 
-    @field_validator("condensin_speed_sd_list")
-    def check_condensin_speed_sd_list(cls, v):
-        if len(v) != 2:
-            raise ValueError("condensin_speed_sd_list must contain exactly 2 values")
-        if any(val < 0 for val in v):
-            raise ValueError("All speed standard deviations must be >= 0")
-        return v
+    #     if monomer_type_list is None:
+    #         self.monomer_type_list = [0 for _ in range(num_monomers)]
+    #     else:
+    #         if len(monomer_type_list) != num_monomers:
+    #             raise ValueError(
+    #                 "Length of monomer_type_list must equal to num_monomers."
+    #             )
+    #     return self
 
-    @field_validator("condensin_1_stall_time_list")
-    def check_condensin_1_stall_time_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_1_stall_time_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        # if v[1] != 1:
-        #     print("Detecting Condensin 1 stall time upon Condensin 2 greater than 1...")
-        #     print("Fixing such stall time to be 1 (no stall)")
-        #     v[1] = 1
-        return v
-
-    @field_validator("condensin_2_stall_time_list")
-    def check_condensin_2_stall_time_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_2_stall_time_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        return v
-
-    @field_validator("condensin_stall_probability_list")
-    def check_condensin_stall_probability_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_stall_probability_list must contain exactly 2 values"
-            )
-        if any(val < 0 for val in v):
-            raise ValueError("All stall time must be between 0 and 1")
-        if any(val > 1 for val in v):
-            raise ValueError("All stall time must be between 0 and 1")
-        return v
-
-    @field_validator("centromere_range_list", mode="after")
-    def check_centromere_range_list(cls, v, info):
+    @field_validator("monomer_type_list", mode="after")
+    def check_monomer_type_list(cls, v, info):
         num_monomers = info.data["num_monomers"]
-        if len(v) != 2:
-            raise ValueError("centromere_range_list must contain exactly 2 values")
-        if v[0] > v[1]:
-            raise ValueError("Lower bound must be <= the upper bound.")
-        if any(val >= num_monomers for val in v):
-            raise ValueError("Centromere bound must be within the polymer")
+        if v is None:
+            return [0 for _ in range(num_monomers)]
+        else:
+            if len(v) != num_monomers:
+                raise ValueError(
+                    "Length of monomer_type_list must equal to num_monomers."
+                )
+            return v
+
+    @field_validator("attraction_coefficient_matrix", mode="after")
+    def check_attraction_coefficient_matrix(cls, v, info):
+        monomer_type_list = info.data["monomer_type_list"]
+        num_unique_monomer_types = len(set(monomer_type_list))
+
+        if v is None:
+            return [
+                [0 for _ in range(num_unique_monomer_types)]
+                for _ in range(num_unique_monomer_types)
+            ]
+        else:
+            if len(v) != num_unique_monomer_types:
+                raise ValueError(
+                    "Number of rows should be equal to the number of unique monomer types."
+                )
+            for v_ in v:
+                if len(v_) != num_unique_monomer_types:
+                    raise ValueError(
+                        "Number of columns should be equal to the number of unique monomer types."
+                    )
+            return v
+
+    @field_validator("cohesin_loading_probability_list", mode="after")
+    def check_cohesin_loading_probability_list(cls, v, info):
+        num_monomers = info.data["num_monomers"]
+        if v is None:
+            return [1 / num_monomers for _ in range(num_monomers)]
+        else:
+            if abs(sum(v) - 1) > 1e-6:  # Use epsilon for tolerance
+                raise ValueError("Probabilities must sum to 1.")
+            if len(v) != num_monomers:
+                raise ValueError(
+                    "Length of cohesin_loading_probability_list must equal to num_monomers"
+                )
+            return v
+
+    @field_validator("ctcf_site_location_list", mode="after")
+    def check_ctcf_site_location_list(cls, v, info):
+        num_monomers = info.data["num_monomers"]
+        if v is None:
+            return []
+        else:
+            for v_ in v:
+                if not (0 <= v_ < num_monomers):
+                    raise ValueError("CTCF site location must be within the polymer.")
         return v
 
-    @field_validator("condensin_bound_lifetime_list")
-    def check_condensin_bound_lifetime_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_bound_lifetime_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        return v
+    @field_validator("ctcf_site_direction_list", mode="after")
+    def check_ctcf_direction_list(cls, v, info):
+        ctcf_site_location_list = info.data["ctcf_site_location_list"]
+        num_ctcf_sites = len(ctcf_site_location_list)
+        if v is None:
+            return ["both" for _ in range(num_ctcf_sites)]
+        else:
+            if len(v) != num_ctcf_sites:
+                raise ValueError(
+                    "Length of ctcf_site_direction_list must equal to length of ctcf_site_location_list."
+                )
+            return v
 
-    @field_validator("condensin_unbound_lifetime_list")
-    def check_condensin_unbound_lifetime_list(cls, v):
-        if len(v) != 2:
-            raise ValueError(
-                "condensin_unbound_lifetime_list must contain exactly 2 values"
-            )
-        if any(val < 1 for val in v):
-            raise ValueError("All stall time must be >= 1")
-        return v
+    @field_validator("ctcf_site_stall_probability_list", mode="after")
+    def check_ctcf_site_stall_probability_list(cls, v, info):
+        ctcf_site_location_list = info.data["ctcf_site_location_list"]
+        num_ctcf_sites = len(ctcf_site_location_list)
+        if v is None:
+            return [1 for _ in range(num_ctcf_sites)]
+        else:
+            if len(v) != num_ctcf_sites:
+                raise ValueError(
+                    "Length of ctcf_site_stall_probability_list must equal to length of ctcf_site_location_list."
+                )
+            for v_ in v:
+                if not (0 <= v_ <= 1):
+                    raise ValueError("CTCF stall probability must be between 0 and 1")
+
+            return v
+
+    @field_validator("ctcf_site_stall_time_list", mode="after")
+    def check_ctcf_stall_time_list(cls, v, info):
+        ctcf_site_location_list = info.data["ctcf_site_location_list"]
+        num_ctcf_sites = len(ctcf_site_location_list)
+        if v is None:
+            return [1000000 for _ in range(num_ctcf_sites)]
+        else:
+            if len(v) != num_ctcf_sites:
+                raise ValueError(
+                    "Length of ctcf_site_stall_probability_list must equal to length of ctcf_site_location_list."
+                )
+            for v_ in v:
+                if v_ < 1:
+                    raise ValueError("CTCF expected stall time should be at least 1")
+            return v

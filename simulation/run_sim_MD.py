@@ -177,7 +177,6 @@ class bondUpdater(object):
 def simulate_MD(cfg: SimConfig, run_dir: Path):
     base_dir = run_dir
 
-    num_sister_chromatid = cfg.num_sister_chromatids
     repulsionEnergy = cfg.repulsion
     collision_rate = cfg.collision_rate
     attraction_radius = cfg.attraction_radius
@@ -185,13 +184,12 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     initial_conformation = cfg.initial_conformation
     gpu_device = cfg.gpu_device
     N = cfg.num_monomers
-    N_per_sister_chromatid = N // num_sister_chromatid
 
     interactionMatrix = np.array(cfg.attraction_coefficient_matrix)
     monomerTypes = np.array(cfg.monomer_type_list)
 
     # monomerTypes have to replicated to reflect the sister chromatid possibility
-    monomerTypes = np.tile(monomerTypes, num_sister_chromatid)
+    monomerTypes = monomerTypes
 
     steps = cfg.num_MD_steps_per_LE
     density = cfg.density
@@ -199,26 +197,17 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     smcBondDist = cfg.smc_bond_dist
     smcBondWiggleDist = cfg.smc_bond_wiggle_dist
 
-    if cfg.num_condensin_total > 0:
-        lef_position_list = []
-        for idx_sister in range(num_sister_chromatid):
-            lef_position_fpath = base_dir / f"LEFPositions_{idx_sister}.h5"
-            lef_positions = h5py.File(
-                lef_position_fpath, mode="r"
-            )  # Read previously exported loop positions from 1D loop extrusion simulation.
-            lef_position_list.append(lef_positions)
-
-        # Read parameters from the loop position file:
-
-        LEFpositions = np.concatenate(
-            [x["positions"] for x in lef_position_list], axis=1
-        )
+    lef_position_fpath = base_dir / "LEFPositions_0.h5"
+    if lef_position_fpath.exists():
+        lef_positions = h5py.File(lef_position_fpath, mode="r")
+        LEFpositions = lef_positions["positions"]
         Nframes = LEFpositions.shape[0]
-
         milker = bondUpdater(LEFpositions)
 
     else:
-        Nframes = cfg.num_LE_steps // 6
+        Nframes = (
+            cfg.num_LE_steps // 1
+        )  # TODO: change this to subsampling ratio variable
 
     if initial_conformation == "crumpled":
         # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
@@ -236,7 +225,8 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     init_conformation_fpath = base_dir / "init_conformation.npy"
     np.save(init_conformation_fpath, data)  # Save the initial conformation
 
-    saveEveryBlocks = 10  # save every 1 simulation steps. Multiply by loop position sampling (typically every 1 s) for final simulation step frequency, e.g. 1x1 = 1 s.
+    # Save all the timepoints
+    saveEveryBlocks = 1  # save every 1 simulation steps. Multiply by loop position sampling (typically every 1 s) for final simulation step frequency, e.g. 1x1 = 1 s.
     restartSimulationEveryBlocks = Nframes  # Do not restart.
 
     # assertions for easy managing code below
@@ -267,25 +257,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         ############################## New code ##############################
         a.set_data(data, center=True)  # loads a polymer, puts a center of mass at zero
 
-        chain_tuple = [
-            (
-                idx_sister * N_per_sister_chromatid,
-                (idx_sister + 1) * N_per_sister_chromatid,
-                False,
-            )
-            for idx_sister in range(num_sister_chromatid)
-        ]
-        if num_sister_chromatid == 1:
-            extra_bond_list = None
-        else:
-            cohesive_cohesin_interval = (
-                1000  # every 1000 monomers, sister chromatids are connected
-            )
-            num_cohesive_cohesin = N_per_sister_chromatid // cohesive_cohesin_interval
-            extra_bond_list = [
-                (idx_cohesive_cohesin, idx_cohesive_cohesin + N_per_sister_chromatid)
-                for idx_cohesive_cohesin in range(num_cohesive_cohesin)
-            ]
+        chain_tuple = [(0, None, False)]
 
         a.add_force(
             forcekits.polymer_chains(
@@ -305,6 +277,10 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                     # K is more or less arbitrary, k=4 corresponds to presistence length of 4,
                     # k=1.5 is recommended to make polymer realistically flexible; k=8 is very stiff
                 },
+                # This works
+                # nonbonded_force_func=polychrom.forces.polynomial_repulsive,
+                # nonbonded_force_kwargs={"trunc": 0, "radiusMult": 1.05},
+                # Not sure why this dos not work
                 nonbonded_force_func=polychrom.forces.heteropolymer_SSW,
                 nonbonded_force_kwargs={
                     "repulsionEnergy": repulsionEnergy,  # base repulsion energy for all monomers (function default is 3.0)
@@ -314,8 +290,8 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                     "monomerTypes": monomerTypes,
                     "extraHardParticlesIdxs": [],
                 },
-                except_bonds=True,
-                extra_bonds=extra_bond_list,
+                # except_bonds=False,
+                # # extra_bonds=extra_bond_list,
             )
         )
 
@@ -324,7 +300,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         kbond = a.kbondScalingFactor / (smcBondWiggleDist**2)
         bondDist = smcBondDist * a.length_scale
 
-        if cfg.num_condensin_total > 0:
+        if cfg.num_cohesin > 0:
             activeParams = {"length": bondDist, "k": kbond}
             inactiveParams = {"length": bondDist, "k": 0}
             milker.setParams(activeParams, inactiveParams)
@@ -365,7 +341,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         )  # Initial equilibration steps to ensure that we start from a relaxed polymer state.
 
         for i in range(restartSimulationEveryBlocks):
-            if i < restartSimulationEveryBlocks - 1 and cfg.num_condensin_total > 0:
+            if i < restartSimulationEveryBlocks - 1 and cfg.num_cohesin > 0:
                 curBonds, pastBonds = milker.step(
                     a.context
                 )  # this updates bonds. You can do something with bonds here
@@ -407,6 +383,6 @@ if __name__ == "__main__":
     run_dir = Path(args.from_dir)
     config_fpath = run_dir.parent / "config_resolved.json"
     # re-load resolved config from run_dir if you save it there
-    cfg = load_config(config_fpath)  # your helper
+    cfg = load_config(str(config_fpath))  # your helper
 
     simulate_MD(cfg, run_dir)
