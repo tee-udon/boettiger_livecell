@@ -239,6 +239,12 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         folder=base_dir, max_data_length=100, overwrite=True, blocks_only=False
     )
 
+    if cfg.PBC_box:
+        box_size = int((N / density) ** 0.333)
+        PBC_box = [box_size, box_size, box_size]
+    else:
+        PBC_box = False
+
     for iteration in range(simInitsTotal):
         # simulation parameters are defined below
         a = Simulation(
@@ -250,7 +256,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             N=len(data),
             reporters=[reporter],
             max_Ek=20,
-            # PBCbox=[box, box, box], #Do not use PCB box for mitotic chromosomes
+            PBCbox=PBC_box,  # Do not use PCB box for mitotic chromosomes
             precision="single",
         )  # timestep not necessary for variableLangevin
 
@@ -277,23 +283,25 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                     # K is more or less arbitrary, k=4 corresponds to presistence length of 4,
                     # k=1.5 is recommended to make polymer realistically flexible; k=8 is very stiff
                 },
-                # This works
-                # nonbonded_force_func=polychrom.forces.polynomial_repulsive,
-                # nonbonded_force_kwargs={"trunc": 0, "radiusMult": 1.05},
-                # Not sure why this dos not work
-                nonbonded_force_func=polychrom.forces.heteropolymer_SSW,
+                
+                # This needs to be properly parameterized
+                # If repulsion is too high, for example, then the polymer cannot minimize the energy
+                # Then the simulation fail
+                nonbonded_force_func=forces.heteropolymer_SSW,
                 nonbonded_force_kwargs={
                     "repulsionEnergy": repulsionEnergy,  # base repulsion energy for all monomers (function default is 3.0)
-                    "attractionEnergy": 0,  # base attraction energy for all monomers (function default is 3.0)
+                    "attractionEnergy": 3,  # base attraction energy for all monomers (function default is 3.0)
                     "attractionRadius": attraction_radius,
                     "interactionMatrix": interactionMatrix,
                     "monomerTypes": monomerTypes,
                     "extraHardParticlesIdxs": [],
                 },
-                # except_bonds=False,
-                # # extra_bonds=extra_bond_list,
             )
         )
+
+        if cfg.confinement is not None:
+            if cfg.confinement == "spherical":
+                a.add_force(forces.spherical_confinement(a, density=density))
 
         # ------------ initializing milker; adding bonds ---------
         # copied from addBond

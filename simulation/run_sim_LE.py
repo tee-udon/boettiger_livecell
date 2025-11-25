@@ -24,15 +24,15 @@ spec_smc = [
     ("SMC_type", types.int_),
     ("bound_lifetime", types.int_),
     ("unbound_lifetime", types.int_),
-    ("SMC_crash_lifetime", types.float_),  # a 1d array
+    ("SMC_crash_lifetime", types.float64),  # a 1d array
     ("extrusion_sided", types.int_),
-    ("extrusion_rate", types.float_),
-    ("extrusion_rate_sd", types.float_),
+    ("extrusion_rate", types.float64),
+    ("extrusion_rate_sd", types.float64),
     ("extrusion_direction", types.int_),
     ("bound", types.boolean),
     # ('age', types.int_),
     ("i", types.int_),
-    ("random_numbers", types.float_[:]),
+    ("random_numbers", types.float32[:]),
     ("start_pos", types.int_),
     ("l_pos", types.int_),
     ("r_pos", types.int_),
@@ -43,15 +43,15 @@ spec_smc = [
     ("CTCF_bound_r", types.boolean),
     (
         "cohesin_loading_probability_list",
-        types.float_[:],
+        types.float64[:],
     ),
-    ("ctcf_site_location_list", types.float_[:]),
-    ("ctcf_site_direction_list", types.float_[:]),
-    ("ctcf_site_stall_probability_list", types.float_[:]),
-    ("crcf_site_stall_time_list", types.float_[:]),
-    ("current_lifetime", types.float_),
-    ("CTCF_stall_time_l", types.float_),
-    ("CTCF_stall_time_r", types.float_),
+    ("ctcf_site_location_list", types.int_[:]),
+    ("ctcf_site_direction_list", types.int_[:]),
+    ("ctcf_site_stall_probability_list", types.float64[:]),
+    ("ctcf_site_stall_time_list", types.float64[:]),
+    ("current_lifetime", types.float64),
+    ("CTCF_stall_time_l", types.float64),
+    ("CTCF_stall_time_r", types.float64),
     ("smc_id", types.int_),
 ]
 
@@ -152,11 +152,21 @@ class SMC:
                         self.CTCF_bound_r = False
                 self.walk()
 
+    def pick_start(self, p):
+        n = self.N_beads - 3
+
+        # create the choices
+        cdf = np.cumsum(p)
+        r = np.random.random()
+        idx = np.searchsorted(cdf, r)
+
+        choices = np.arange(n)
+
+        # weighted random pick
+        return choices[idx]
+
     def bind(self):
-        self.start_pos = np.random.choice(
-            np.arange(0, self.N_beads - 3, dtype=int),
-            p=self.cohesin_loading_probability,
-        )
+        self.start_pos = self.pick_start(self.cohesin_loading_probability_list)
 
         # Starting position is random with both arms on polymer.
         self.l_pos = self.start_pos
@@ -388,7 +398,6 @@ def init_SMC_sim(cfg: SimConfig) -> List[SMC]:
 
     mapping_direction_int = {"left": -1, "both": 0, "right": 1}
 
-    # Currently this case is always true (_num_condensin_types == 2). For code replicability reason.
     for i in range(cfg.num_cohesin):
         SMCs.append(
             SMC(
@@ -405,7 +414,7 @@ def init_SMC_sim(cfg: SimConfig) -> List[SMC]:
                 ),
                 ctcf_site_location_list=np.array(cfg.ctcf_site_location_list),
                 ctcf_site_direction_list=np.array(
-                    [mapping_direction_int(x) for x in cfg.ctcf_site_direction_list]
+                    [mapping_direction_int[x] for x in cfg.ctcf_site_direction_list]
                 ),
                 ctcf_site_stall_probability_list=np.array(
                     cfg.ctcf_site_stall_probability_list

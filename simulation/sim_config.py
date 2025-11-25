@@ -157,6 +157,10 @@ class SimConfig(BaseModel, extra=Extra.forbid):
     initial_conformation: Literal["random_walk", "random_walk_z", "crumpled"] = Field(
         "crumpled", description="Initial conformation for MD simulation"
     )
+    confinement: None | Literal["spherical"] = Field(
+        None, description="Confinement. Support None and spherical."
+    )
+    PBC_box: Literal[True, False] = Field(False, description="The size of periodic boundary condition.")
 
     # --- plot setting
     plot_LE: Literal[True, False] = Field(
