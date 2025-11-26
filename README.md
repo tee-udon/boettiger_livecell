@@ -1,44 +1,41 @@
+# boettiger-livecell
+
 Simulation engine for mitotic chromosome simulation powered by [OpenMM](https://openmm.org) and [Polychrom](https://github.com/open2c/polychrom).\
-Supporting sister chromatids and centromere simulations.
+Forked from [boettiger-mitotic](https://github.com/tee-udon/boettiger-mitotic.git).
 
 ## TL;DR Let's just simulate chromosomes and analyze
 
-### Boettiger Servers 
+### Boettiger Servers
+
 #### Running Simulations
+
 Run Anaconda Powershell Prompt **as administrator**. (`conda` requires admin access). Then activate `tee` virtual environment using the following command:
+
 ```Powershell
 conda activate tee
 ```
+
 If activation is successful, your Powershell Prompt should starts with `(tee)`:
-```
+
+```Powershell
 (tee) PS: [directory]> 
 ```
-Because this virtual environment contains all the required dependencies, we are ready to run simulation. Running simulation is very simple: you just pass the config file (`*.yaml`) that contains hyperparameters for the simulation to the main simulation driver `boettiger-mitotic/main.py`. `main.py` will validate the validity of hyperparameters, coordinate LE and MD simulations, and output the results automatically. `main.py` accepts path to config file through `--config` flag.
 
-To simulate DT40 SMC3-AID Chromosome 1 where the second diagonal happens near 10 Mb without a sister chromatid nor a centromere, run the following command:
+Because this virtual environment contains all the required dependencies, we are ready to run simulation. Running simulation is very simple: you just pass the config file (`*.yaml`) that contains hyperparameters for the simulation to the main simulation driver `boettiger-livecell/main.py`. `main.py` will validate the validity of hyperparameters, coordinate LE and MD simulations, and output the results automatically. `main.py` accepts path to config file through `--config` flag.
 
-Server 1 
-```Powershell
-python "L:\07_MitoticChromosome\boettiger-mitotic\main.py" --config  "L:\07_MitoticChromosome\boettiger-mitotic\tutorial\boettiger_servers\server_1\config_bothCond.yaml"
-``` 
+To simulate Rouse polymer, run the following command:
 
 Server 2
-```Powershell 
-python "F:\Tee\MitoticChromosome\boettiger-mitotic\main.py" --config  "F:\Tee\MitoticChromosome\boettiger-mitotic\tutorial\boettiger_servers\server_2\config_bothCond.yaml"
-``` 
-This will simulate one chromosome and output it in folder indicated in `out_dir` parameter in the config file. 
 
-On Server 1, it is: 
-```
-L:\07_MitoticChromosome\Dataset\20251017_Tutorial
+```Powershell
+python "F:\Tee\boettiger-livecell\simulation\main.py" --config "F:\Tee\boettiger-livecell\tests\simulation\config_rouse_slurm.yaml"
 ```
 
-while on Server 2, it is:
-```
-F:\Tee\MitoticChromosome\Dataset\20251017_Tutorial
-```  
+This will simulate one chromosome and output it in folder indicated in `out_dir` parameter in the config file, which is `F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation` in this example.
 
-Anecdotally, this simulation should not take more than 10 minutes if your GPU does not share its resources with other GPU-intensive jobs. 
+Anecdotally, this simulation should not take more than 20 minutes if your GPU does not share its resources with other GPU-intensive jobs.
+
+#### Hyperparameters 
 
 #### Analyzing Results
 The 3D positions of monomers are stored in `all_conformations.npy` which contains a `num_MD_timepoints x num_monomers x 3` numpy array. `num_MD_timepoints` = 31, one for each minute, including the initial structure. `num_monomers` = 100,000, where each bead corresponds to 1 kb (Quick math: this simulated chromosome corresponds to 100 Mb in total.)
