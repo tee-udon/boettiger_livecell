@@ -130,7 +130,6 @@ Used only when backend="slurm".
 | `confinement`                   | `"spherical"?`                                   | `null`       | –                    | Confinement geometry.                                                    |
 | `PBC_box`                       | `bool`                                           | `false`      | –                    | Enable periodic boundary conditions.                                     |
 
-
 ##### Plotting
 
 | Name      | Type   | Default | Description                                    |
@@ -144,16 +143,17 @@ Used only when backend="slurm".
 | `backend` | `"local" \| "slurm"` | `"local"` | Execution backend.                                    |
 | `slurm`   | `SlurmCfg?`          | `null`    | SLURM configuration (only used if `backend="slurm"`). |
 
-
 ##### Automatic Defaults & Validation
 
 The following parameters are automatically generated if not provided:\
+
 - `monomer_type_list`: initialized to all zeros.\
 - `attraction_coefficient_matrix`: initialized to a zero matrix.\
 - `cohesin_loading_probability_list`: uniform distribution over monomers.\
 - `ctcf_site_direction_list`: defaults to "both" for all sites.\
 - `ctcf_site_stall_probability_list`: defaults to 1 for all sites.\
 - `ctcf_site_stall_time_list`: defaults to a very large value.
+
 All lists are strictly validated for correct lengths and physical constraints.
 
 
