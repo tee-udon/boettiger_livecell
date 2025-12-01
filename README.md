@@ -3,11 +3,9 @@
 Simulation engine for mitotic chromosome simulation powered by [OpenMM](https://openmm.org) and [Polychrom](https://github.com/open2c/polychrom).\
 Forked from [boettiger-mitotic](https://github.com/tee-udon/boettiger-mitotic.git).
 
-## TL;DR Let's just simulate chromosomes and analyze
+## Running Simulations
 
-### Boettiger Servers
-
-#### Running Simulations
+### Boettiger Server
 
 Run Anaconda Powershell Prompt **as administrator**. (`conda` requires admin access). Then activate `tee` virtual environment using the following command:
 
@@ -31,28 +29,85 @@ Server 2
 python "F:\Tee\boettiger-livecell\simulation\main.py" --config "F:\Tee\boettiger-livecell\tests\simulation\config_rouse_slurm.yaml"
 ```
 
-This will simulate one chromosome and output it in folder indicated in `out_dir` parameter in the config file, which is `F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation` in this example.
+This will simulate 10 independent Rouse polymers and output it in folder indicated in `out_dir` parameter in the config file, which is `F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation` in this example.
 
 Anecdotally, this simulation should not take more than 20 minutes if your GPU does not share its resources with other GPU-intensive jobs.
 
-#### Hyperparameters 
+## Hyperparameters
 
-All parameters are defined using `pydantic` models. The main configuration object is `SimConfig`.  
-If `backend="slurm"`, an additional `SlurmCfg` block is required.
+All parameters are defined using a config `yaml` file.  
 
 Example:
 
-```python
-cfg = SimConfig(
-    num_monomers=100_000,
-    num_replicates=4,
-    backend="local",
-)
+```yaml
+# Bookkeeping
+out_dir: /mnt/home/tudomlumleart/ceph/04_MitoticChromosome/dataset/simulations/20251121_LiveCellSimulation
+condition_name: RouseTest
+start_idx_replicate: 0
+
+# Number of independent replicates per run
+num_replicates: 1
+
+# Core loop extruion simulation hyperparameters
+num_monomers: 10000 # 10 Mb 
+
+# Cohesin-related parameters
+num_cohesin: 0 
+cohesin_speed: 1
+cohesin_speed_sd: 0
+cohesin_stall_time: 1
+cohesin_stall_probability: 1
+cohesin_bound_lifetime: 1
+cohesin_unbound_lifetime: 1
+extrusion_side: 2
+cohesin_loading_probability_list: null
+
+# CTCF-related parameters 
+ctcf_site_location_list: null
+ctcf_site_direction_list: null
+ctcf_site_stall_probability_list: null
+ctcf_site_stall_time_list: null
+
+# Number of LE steps
+num_LE_steps: 10000
+num_LE_steps_init: 0
+
+# MD simulation parameters
+monomer_type_list: null
+attraction_coefficient_matrix: null
+repulsion: 0
+equilibration_timestep: 100000 
+num_MD_steps_per_LE: 1000
+attraction_radius: 0 # This has to be 0 when there is no attraction!
+density: 0.24
+collision_rate: 0.03
+initial_conformation: random_walk
+
+# Plot for sanity check
+plot_LE: true 
+
+# backend 
+backend: local
+
+# slurm options - in case running on high-computing cluster
+slurm:
+  partition: gpu
+  time: "01:00:00"
+  gpus: "1"
+  cpus_per_task: 1
+  mem: "64G"
+  nodes: 1
+  ntasks: 1
+  env_setup: |
+    module load modules/2.3-20240529 cuda/12.3.2
+    conda activate py-hoomd2
+  python: python
+  wait: false
 ```
 
-##### Simulation Configuration (`SimConfig`)
+### Simulation Configuration (`SimConfig`)
 
-##### General Settings
+### General Settings
 
 | Name                  | Type  | Default  | Constraints | Description                                  |
 | --------------------- | ----- | -------- | ----------- | -------------------------------------------- |
@@ -61,7 +116,7 @@ cfg = SimConfig(
 | `out_dir`             | `str` | `"runs"` | –           | Output directory for all runs.               |
 | `start_idx_replicate` | `int` | `0`      | –           | Starting index for replicate numbering.      |
 
-##### Loop Extrusion (LE) Parameters
+### Loop Extrusion (LE) Parameters
 
 | Name                               | Type           | Default  | Constraints                   | Description                                                                         |
 | ---------------------------------- | -------------- | -------- | ----------------------------- | ----------------------------------------------------------------------------------- |
@@ -78,7 +133,7 @@ cfg = SimConfig(
 | `num_LE_steps_init`                | `int`          | `0`      | `>= 0`                        | LE steps run before exporting (for steady state).                                   |
 | `cohesin_loading_probability_list` | `list[float]?` | `null`   | len = `num_monomers`, sum = 1 | Per-monomer cohesin loading probabilities. If `null`, uniform distribution is used. |
 
-##### CTCF Site Parameters
+### CTCF Site Parameters
 
 | Name                               | Type                           | Default | Constraints                | Description                                                                                    |
 | ---------------------------------- | ------------------------------ | ------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -87,11 +142,35 @@ cfg = SimConfig(
 | `ctcf_site_stall_probability_list` | `list[float]?`                 | `null`  | `0 ≤ p ≤ 1`                | Stall probability for each CTCF site. If `null`, all are 1.                                    |
 | `ctcf_site_stall_time_list`        | `list[float]?`                 | `null`  | `>= 1`                     | Expected stall time for each CTCF site. If `null`, very large value is used (permanent stall). |
 
+### Molecular Dynamics (MD) Parameters
 
+| Name                            | Type                                             | Default      | Constraints          | Description                                                              |
+| ------------------------------- | ------------------------------------------------ | ------------ | -------------------- | ------------------------------------------------------------------------ |
+| `monomer_type_list`             | `list[int]?`                                     | `null`       | len = `num_monomers` | Monomer types. If `null`, all monomers are treated as the same type.     |
+| `attraction_coefficient_matrix` | `list[list[float]]?`                             | `null`       | square matrix        | Inter-type attraction coefficients. If `null`, no attraction is assumed. |
+| `repulsion`                     | `float`                                          | `5.0`        | `>= 0`               | Repulsion constant between monomers.                                     |
+| `equilibration_timestep`        | `int`                                            | `1500`       | `>= 1`               | MD timesteps used to relax the initial conformation.                     |
+| `num_MD_steps_per_LE`           | `int`                                            | `1000`       | `>= 1`               | MD timesteps between LE updates.                                         |
+| `attraction_radius`             | `float`                                          | `0`          | `>= 0`               | Radius over which monomer attraction acts.                               |
+| `density`                       | `float`                                          | `0.24`       | `0 < density ≤ 1`    | Initial polymer density relative to the enclosing box.                   |
+| `collision_rate`                | `float`                                          | `0.03`       | `> 0`                | Rate of monomer–monomer collisions.                                      |
+| `smc_bond_dist`                 | `float`                                          | `0.5`        | `> 0`                | Mean bond length between condensin arms.                                 |
+| `smc_bond_wiggle_dist`          | `float`                                          | `0.2`        | `> 0`                | Std. deviation of condensin bond length.                                 |
+| `gpu_device`                    | `str`                                            | `"0"`        | –                    | GPU device used for the MD simulation.                                   |
+| `initial_conformation`          | `"random_walk" \| "random_walk_z" \| "crumpled"` | `"crumpled"` | –                    | Initial polymer conformation.                                            |
+| `confinement`                   | `"spherical"?`                                   | `null`       | –                    | Confinement geometry.                                                    |
+| `PBC_box`                       | `bool`                                           | `false`      | –                    | Enable periodic boundary conditions. |
 
-##### Slurm Configuration (`SlurmCfg`)
+### Backend
 
-Used only when backend="slurm".
+| Name      | Type                 | Default   | Description                                           |
+| --------- | -------------------- | --------- | ----------------------------------------------------- |
+| `backend` | `"local" \| "slurm"` | `"local"` | Execution backend.                                    |
+| `slurm`   | `SlurmCfg?`          | `null`    | SLURM configuration (only used if `backend="slurm"`). |
+
+### Slurm Configuration (`SlurmCfg`)
+
+Used only when `backend="slurm"`.
 
 | Name               | Type        | Default      | Description                                                       |
 | ------------------ | ----------- | ------------ | ----------------------------------------------------------------- |
@@ -111,87 +190,27 @@ Used only when backend="slurm".
 | `python`           | `str`       | `"python"`   | Python interpreter used inside the job.                           |
 | `wait`             | `bool`      | `true`       | If `true`, block until the job finishes (polls `squeue`/`sacct`). |
 
-##### Molecular Dynamics (MD) Parameters
-
-| Name                            | Type                                             | Default      | Constraints          | Description                                                              |
-| ------------------------------- | ------------------------------------------------ | ------------ | -------------------- | ------------------------------------------------------------------------ |
-| `monomer_type_list`             | `list[int]?`                                     | `null`       | len = `num_monomers` | Monomer types. If `null`, all monomers are treated as the same type.     |
-| `attraction_coefficient_matrix` | `list[list[float]]?`                             | `null`       | square matrix        | Inter-type attraction coefficients. If `null`, no attraction is assumed. |
-| `repulsion`                     | `float`                                          | `5.0`        | `>= 0`               | Repulsion constant between monomers.                                     |
-| `equilibration_timestep`        | `int`                                            | `1500`       | `>= 1`               | MD timesteps used to relax the initial conformation.                     |
-| `num_MD_steps_per_LE`           | `int`                                            | `1000`       | `>= 1`               | MD timesteps between LE updates.                                         |
-| `attraction_radius`             | `float`                                          | `0`          | `>= 0`               | Radius over which monomer attraction acts.                               |
-| `density`                       | `float`                                          | `0.24`       | `0 < density ≤ 1`    | Initial polymer density relative to the enclosing box.                   |
-| `collision_rate`                | `float`                                          | `0.03`       | `> 0`                | Rate of monomer–monomer collisions.                                      |
-| `smc_bond_dist`                 | `float`                                          | `0.5`        | `> 0`                | Mean bond length between condensin arms.                                 |
-| `smc_bond_wiggle_dist`          | `float`                                          | `0.2`        | `> 0`                | Std. deviation of condensin bond length.                                 |
-| `gpu_device`                    | `str`                                            | `"0"`        | –                    | GPU device used for the MD simulation.                                   |
-| `initial_conformation`          | `"random_walk" \| "random_walk_z" \| "crumpled"` | `"crumpled"` | –                    | Initial polymer conformation.                                            |
-| `confinement`                   | `"spherical"?`                                   | `null`       | –                    | Confinement geometry.                                                    |
-| `PBC_box`                       | `bool`                                           | `false`      | –                    | Enable periodic boundary conditions.                                     |
-
-##### Plotting
+### Plotting
 
 | Name      | Type   | Default | Description                                    |
 | --------- | ------ | ------- | ---------------------------------------------- |
 | `plot_LE` | `bool` | `true`  | Plot LE simulation result for sanity checking. |
 
-##### Backend
+### Automatic Defaults & Validation
 
-| Name      | Type                 | Default   | Description                                           |
-| --------- | -------------------- | --------- | ----------------------------------------------------- |
-| `backend` | `"local" \| "slurm"` | `"local"` | Execution backend.                                    |
-| `slurm`   | `SlurmCfg?`          | `null`    | SLURM configuration (only used if `backend="slurm"`). |
+The following parameters are automatically generated if not provided:
 
-##### Automatic Defaults & Validation
-
-The following parameters are automatically generated if not provided:\
-
-- `monomer_type_list`: initialized to all zeros.\
-- `attraction_coefficient_matrix`: initialized to a zero matrix.\
-- `cohesin_loading_probability_list`: uniform distribution over monomers.\
-- `ctcf_site_direction_list`: defaults to "both" for all sites.\
-- `ctcf_site_stall_probability_list`: defaults to 1 for all sites.\
+- `monomer_type_list`: initialized to all zeros.
+- `attraction_coefficient_matrix`: initialized to a zero matrix.
+- `cohesin_loading_probability_list`: uniform distribution over monomers.
+- `ctcf_site_direction_list`: defaults to "both" for all sites.
+- `ctcf_site_stall_probability_list`: defaults to 1 for all sites.
 - `ctcf_site_stall_time_list`: defaults to a very large value.
 
 All lists are strictly validated for correct lengths and physical constraints.
 
+## Acknowledgements
 
-#### Analyzing Results
-The 3D positions of monomers are stored in `all_conformations.npy` which contains a `num_MD_timepoints x num_monomers x 3` numpy array. `num_MD_timepoints` = 31, one for each minute, including the initial structure. `num_monomers` = 100,000, where each bead corresponds to 1 kb (Quick math: this simulated chromosome corresponds to 100 Mb in total.)
-
-The 1D positions of Condensins are slightly more complicated to extract, but one should not give up when things are tough. 1D locations are stored in `SMC_pos_0.npy`. Suffix `0` indicates the first sister chromatid (I know, pythonic zero-based indexing. *Tsk* *Tsk*). If your simulation has 2 sisters, `SMC_pos_0.npy` **AND** `SMC_pos_1.npy` both should exist. This file contains a `num_MD_timepoints x num_condensins x 2` numpy array. 
-
-The information about the type and binding status of Condensin resides in `SMC_props_*.npy`. Suffix convention is similar to `SMC_pos_*.npy`. This information is encoded in a `num_MD_timepoints x num_condensins x 4` numpy array. The binding status (`0`=unbound and `1`=bound) is stored in the first entry of the last dimension. On the contrary, the type of Condensin (`0`=Condensin 1 and `1`=Condensin 2) is saved in the last entry of the last dimension of this array. 
-
-
-See [jupyter notebook](https://github.com/tee-udon/boettiger-mitotic/blob/main/tutorial/boettiger_servers/20251017_AnalyzingResultsTutorial.ipynb) (`tutorial/boettiger_servers/20251017_AnalyzingResultsTutorial.ipynb`) for more information. 
-
-
-
-## TODO
-### *In silico* experiments 
-- [ ] HOOMD integration for equilibrium stalling testing
-- [ ] Biophysical pulling experiments
-
-### Software engineering
-- [ ] Tutorial for code running
-    - [ ] Boettiger servers
-    - [ ] Linux HPC
-- [ ] Out-of-the-box results for 3D interaction with the polymer
-- [ ] Add module for parameter search powered by Bayesian optimization 
-- [ ] Clean up the codebase
-    - [ ] Add modules for MATLAB export 
-    - [ ] Add option for start index in indepnedent replicates 
-    - [ ] Smart OpenMM device selection 
-
-### Housekeeping 
-- [ ] Write installation guide 
-    - [ ] Ensure dependencies met
-- [ ] Wrap a pip and conda package
-- [ ] Write a wiki for API database 
-
-## Acknowledgements 
 This codebase stands on the shoulders of giants, including the following:
 
 Beckwith, K. S., Brunner, A., Morero, N. R., Jungmann, R., & Ellenberg, J. (2025). Nanoscale DNA tracing reveals the self-organization mechanism of mitotic chromosomes. Cell, 188(10). https://doi.org/10.1016/j.cell.2025.02.028  
