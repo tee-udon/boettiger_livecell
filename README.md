@@ -37,7 +37,7 @@ Anecdotally, this simulation should not take more than 20 minutes if your GPU do
 
 All parameters are defined using a config `yaml` file.  
 
-Example:
+### Example for Rouse Polymer:
 
 ```yaml
 # Bookkeeping
@@ -90,6 +90,76 @@ plot_LE: true
 backend: local
 
 # slurm options - in case running on high-computing cluster
+slurm:
+  partition: gpu
+  time: "01:00:00"
+  gpus: "1"
+  cpus_per_task: 1
+  mem: "64G"
+  nodes: 1
+  ntasks: 1
+  env_setup: |
+    module load modules/2.3-20240529 cuda/12.3.2
+    conda activate py-hoomd2
+  python: python
+  wait: false
+```
+
+### Example for Crumpled polymer with Extrusion
+
+```yaml
+# Bookkeeping
+out_dir: /mnt/home/tudomlumleart/ceph/04_MitoticChromosome/dataset/simulations/20251121_LiveCellSimulation
+condition_name: CrumpledExtrusionTest 
+start_idx_replicate: 0
+
+# Number of independent replicates per run
+num_replicates: 1
+
+# Core loop extruion simulation hyperparameters
+num_monomers: 10000 # 10 Mb 
+
+# Cohesin-related parameters
+num_cohesin: 100
+cohesin_speed: 1
+cohesin_speed_sd: 0
+cohesin_stall_time: 10
+cohesin_stall_probability: 1
+cohesin_bound_lifetime: 1000
+cohesin_unbound_lifetime: 1
+extrusion_side: 2
+cohesin_loading_probability_list: null
+
+# CTCF-related parameters 
+ctcf_site_location_list: [4000, 6000]
+ctcf_site_direction_list: ['right', 'left']
+ctcf_site_stall_probability_list: [1, 1]
+ctcf_site_stall_time_list: [100000, 100000]
+
+# Number of LE steps
+num_LE_steps: 10000
+num_LE_steps_init: 0
+
+# MD simulation parameters
+monomer_type_list: null
+attraction_coefficient_matrix: null
+repulsion: 1
+equilibration_timestep: 100000 
+num_MD_steps_per_LE: 100
+attraction_radius: 0 # This has to be 0 when there is no attraction!
+density: 0.24
+collision_rate: 0.03
+initial_conformation: crumpled
+PBC_box: False # Adding PBC_box and spherical confinement can crash fail the energy minimization process 
+confinement: spherical 
+
+# Plot for sanity check
+plot_LE: true 
+
+# backend 
+backend: local
+
+# slurm options
 slurm:
   partition: gpu
   time: "01:00:00"
