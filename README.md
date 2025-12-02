@@ -182,8 +182,8 @@ slurm:
 | Name                  | Type  | Default  | Constraints | Description                                  |
 | --------------------- | ----- | -------- | ----------- | -------------------------------------------- |
 | `num_replicates`      | `int` | `1`      | `>= 1`      | Number of independent replicates per run.    |
-| `condition_name`      | `str` | `""`     | –           | Optional label for the simulation condition. |
 | `out_dir`             | `str` | `"runs"` | –           | Output directory for all runs.               |
+| `condition_name`      | `str` | `""`     | –           | Optional label for the simulation condition. |
 | `start_idx_replicate` | `int` | `0`      | –           | Starting index for replicate numbering.      |
 
 ### Loop Extrusion (LE) Parameters
@@ -199,7 +199,7 @@ slurm:
 | `cohesin_bound_lifetime`           | `float`        | `100000` | `>= 1`                        | Expected lifetime of bound cohesin.                                                 |
 | `cohesin_unbound_lifetime`         | `float`        | `1`      | `>= 1`                        | Expected lifetime of unbound cohesin.                                               |
 | `extrusion_side`                   | `Literal[1,2]` | `2`      | –                             | `1` = unidirectional, `2` = bidirectional extrusion.                                |
-| `num_LE_steps`                     | `int`          | `1800`   | `>= 0`                        | Total number of LE steps (default ≈ 30 min).                                        |
+| `num_LE_steps`                     | `int`          | `1800`   | `>= 0`                        | Total number of LE steps (default ≈ 1800 frames).                                        |
 | `num_LE_steps_init`                | `int`          | `0`      | `>= 0`                        | LE steps run before exporting (for steady state).                                   |
 | `cohesin_loading_probability_list` | `list[float]?` | `null`   | len = `num_monomers`, sum = 1 | Per-monomer cohesin loading probabilities. If `null`, uniform distribution is used. |
 

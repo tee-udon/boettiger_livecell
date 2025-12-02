@@ -1,3 +1,4 @@
+import numpy as np
 from typing import Literal, List, Optional, Tuple
 from pydantic import (
     BaseModel,
@@ -320,7 +321,7 @@ class SimConfig(BaseModel, extra="forbid"):
         
         num_ctcf_sites = len(ctcf_site_location_list)
         if v is None:
-            return [1000000 for _ in range(num_ctcf_sites)]
+            return [np.inf for _ in range(num_ctcf_sites)]
         else:
             if len(v) != num_ctcf_sites:
                 raise ValueError(
