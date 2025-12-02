@@ -6,7 +6,7 @@ from sim_config import SimConfig
 import numpy as np
 from numba import njit, types, typed
 from numba.experimental import jitclass
-import tqdm
+from tqdm import tqdm
 
 
 @njit
@@ -256,7 +256,6 @@ class SMC:
 @njit(parallel=False)  # Sometimes segfaults if run in paralell...
 def update_SMC_sim(SMCs: list):
     # Runs every SMC simulation step, updates all SMCs and barriers, checks for potential interactions.
-
     loop_pos = -np.ones(
         (len(SMCs), 2)
     )  # Initialize empty list for gathering loop positions based on SMC arm positions.
@@ -273,9 +272,8 @@ def update_SMC_sim(SMCs: list):
                 # Appends the left and right arm positions of each bound SMC as a loop.
 
                 if (
-                    (s.SMC_crash_prob > 0)
-                    and not (s.SMC_bound_l and s.SMC_bound_r)
-                    and not (s.CTCF_bound_l and s.CTCF_bound_r)
+                    not (s.SMC_bound_l and s.SMC_bound_r)
+                    or not (s.CTCF_bound_l and s.CTCF_bound_r)
                 ):  # If cannot stall, or if already stalled in both arms no further checks necessary.
                     # Check CTCF collision outdifr og yhr oopd
                     ctcf_site_location_list = s.ctcf_site_location_list
@@ -292,6 +290,7 @@ def update_SMC_sim(SMCs: list):
                         ctcf_collision_idx_list_l = np.flatnonzero(
                             ctcf_site_location_list == s.l_pos
                         )
+
                         # If there is collision, meaning the location of left arm == one of the ctcf location
                         if len(ctcf_collision_idx_list_l):
                             curr_ctcf_site_idx = ctcf_collision_idx_list_l[0]
@@ -444,7 +443,7 @@ def simulate_LE(
     SMC_props = []
     SMCs = init_SMC_sim(cfg)
 
-    for i in tqdm.tqdm(
+    for i in tqdm(
         range(cfg.num_LE_steps_init)
     ):  # Take the initialization steps, do not record loop positions.
         update_SMC_sim(SMCs)
@@ -453,7 +452,7 @@ def simulate_LE(
         (cfg.num_LE_steps, cfg.num_cohesin, 2), dtype=np.int64
     )  # Bond array.
 
-    for j in tqdm.tqdm(range(cfg.num_LE_steps)):
+    for j in tqdm(range(cfg.num_LE_steps)):
         loop_pos = update_SMC_sim(SMCs)  # Calculate loops/bonds from simulation
         res_loop_pos[j] = loop_pos.copy()  # Record bonds
         SMC_props.append(

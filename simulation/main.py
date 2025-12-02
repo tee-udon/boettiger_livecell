@@ -15,9 +15,7 @@ log = logging.getLogger(__name__)
 
 def save_resolved_config(cfg: SimConfig, run_dir: Path):
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "config_resolved.json").write_text(
-        cfg.model_dump_json(exclude_computed_fields=True, indent=2)
-    )
+    (run_dir / "config_resolved.json").write_text(cfg.model_dump_json(indent=2))
 
 
 def parse_args():

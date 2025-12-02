@@ -1,12 +1,10 @@
 import numpy as np
-from typing import Literal, List, Optional, Tuple
+from typing import Literal, List, Optional
 from pydantic import (
     BaseModel,
     PrivateAttr,
     Field,
     field_validator,
-    model_validator,
-    computed_field,
     ConfigDict,
 )
 
@@ -90,33 +88,33 @@ class SimConfig(BaseModel, extra="forbid"):
         ge=0,
         description="Total number of loop extrusion steps pre-exporting. This is useful for LE steady-state study.",
     )
-    cohesin_loading_probability_list: None | List[float] = Field(
+    cohesin_loading_probability_list: Optional[List[float]] = Field(
         None,
         description="List of cohesin loading probability along the genome. It can either be None or a list of length num_monomers. The total probabilty must sum to 1.",
     )
-    ctcf_site_location_list: None | List[int] = Field(
+    ctcf_site_location_list: Optional[List[int]] = Field(
         None,
         description="List of ctcf site locations along the genome. If it is None, then simulation assumes that there is no CTCF in the system.",
     )
-    ctcf_site_direction_list: None | List[Literal["left", "right", "both"]] = Field(
+    ctcf_site_direction_list: Optional[List[Literal["left", "right", "both"]]] = Field(
         None,
         description="List of ctcf site directions. If it is None, then the simulation assumes that all CTCF sites can stall cohesin from both direction.",
     )
-    ctcf_site_stall_probability_list: None | List[float] = Field(
+    ctcf_site_stall_probability_list: Optional[List[float]] = Field(
         None,
         description="List of ctcf site stalling probability. If it is None, then the simulation assumes that CTCF sites always stall cohesin.",
     )
-    ctcf_site_stall_time_list: None | List[float] = Field(
+    ctcf_site_stall_time_list: Optional[List[float]] = Field(
         None,
         description="List of ctcf site expeted stall time. If it is None, then the simulation assumes that CTCF sites stall cohesin forever.",
     )
 
     # --- core MD simulation hyperparameter
-    monomer_type_list: None | List[int] = Field(
+    monomer_type_list: Optional[List[int]] = Field(
         None,
         description="List of monomer types. If not provided, the simulation assumes that all monomers have similar type (homopolymer).",
     )
-    attraction_coefficient_matrix: None | List[List[float]] = Field(
+    attraction_coefficient_matrix: Optional[List[List[float]]] = Field(
         None,
         description="Attraction coefficient between monomer types. It can either be None or an N-by-N matrix where N is the number of monomer types. If None, the simulation assumes that monomers do not attract.",
     )
@@ -157,10 +155,12 @@ class SimConfig(BaseModel, extra="forbid"):
     initial_conformation: Literal["random_walk", "random_walk_z", "crumpled"] = Field(
         "crumpled", description="Initial conformation for MD simulation"
     )
-    confinement: None | Literal["spherical"] = Field(
+    confinement: Optional[Literal["spherical"]] = Field(
         None, description="Confinement. Support None and spherical."
     )
-    PBC_box: Literal[True, False] = Field(False, description="The size of periodic boundary condition.")
+    PBC_box: Literal[True, False] = Field(
+        False, description="The size of periodic boundary condition."
+    )
 
     # --- plot setting
     plot_LE: Literal[True, False] = Field(
@@ -203,7 +203,7 @@ class SimConfig(BaseModel, extra="forbid"):
         # If num_monomers failed validation, bail out; the scalar field error is enough.
         if num_monomers is None:
             return v
-        
+
         if v is None:
             return [0 for _ in range(num_monomers)]
         else:
@@ -239,14 +239,13 @@ class SimConfig(BaseModel, extra="forbid"):
                     )
             return v
 
-
     @field_validator("cohesin_loading_probability_list", mode="after")
     def check_cohesin_loading_probability_list(cls, v, info):
         num_monomers = info.data.get("num_monomers")
         # If num_monomers failed validation, bail out; the scalar field error is enough.
         if num_monomers is None:
             return v
-        
+
         if v is None:
             return [1 / num_monomers for _ in range(num_monomers)]
         else:
@@ -264,7 +263,7 @@ class SimConfig(BaseModel, extra="forbid"):
         # If num_monomers failed validation, bail out; the scalar field error is enough.
         if num_monomers is None:
             return v
-        
+
         if v is None:
             return []
         else:
@@ -289,7 +288,6 @@ class SimConfig(BaseModel, extra="forbid"):
                     "Length of ctcf_site_direction_list must equal to length of ctcf_site_location_list."
                 )
             return v
-
 
     @field_validator("ctcf_site_stall_probability_list", mode="after")
     def check_ctcf_site_stall_probability_list(cls, v, info):
@@ -318,7 +316,7 @@ class SimConfig(BaseModel, extra="forbid"):
         if ctcf_site_location_list is None:
             # Locations missing or invalid; skip to avoid hiding that error
             return v
-        
+
         num_ctcf_sites = len(ctcf_site_location_list)
         if v is None:
             return [np.inf for _ in range(num_ctcf_sites)]
