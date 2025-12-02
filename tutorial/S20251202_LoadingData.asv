@@ -1,0 +1,114 @@
+%% Add npy-matlab for loading .npy files 
+addpath("F:\Tee\npy-matlab\npy-matlab")
+
+%% 
+sim_fpath = "F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation\CrumpledExtrusionTest";
+
+% list all folders in the directory 
+
+sim_replicate_folders = dir(fullfile(sim_fpath, '*'));
+sim_replicate_fpath = fullfile({sim_replicate_folders.folder}, {sim_replicate_folders.name});
+
+%% Define paths for the dataset
+idx_replicate = 1; % 1-based indexing
+
+% The first two folders are . and .. (reference to current folder and parent folder)
+% so we add the index by 2
+curr_sim_replicate_fpath = sim_replicate_fpath{idx_replicate+2}; 
+
+poly_fpath = fullfile(curr_sim_replicate_fpath, 'all_conformations.npy');
+condensin_1d_pos_fpath = fullfile(curr_sim_replicate_fpath, 'SMC_pos_0.npy');
+condensin_1d_props_fpath = fullfile(curr_sim_replicate_fpath, 'SMC_props_0.npy');
+
+%% load the dataset
+
+polys = readNPY(poly_fpath);
+condensin_1d_pos = readNPY(condensin_1d_pos_fpath);
+
+%% Validate the shape 
+[num_timepoints_MD, num_monomers, num_dimensions] = size(polys);
+sprintf("This array contains %dD positions of %d monomers across %d MD timepoints.", num_dimensions, num_monomers, num_timepoints_MD)
+
+[num_timepoints_1D, num_condensins, num_heads] = size(condensin_1d_pos);
+sprintf("This array contains %d condensins. Each contains %d heads across %d 1D timepoints.", num_condensins, num_heads, num_timepoints_1D)
+
+
+%% Find the position of bound cohesin
+% Key point: no downsampling
+% Therefore the timepoint index mapping is 1 (3D timestep) <-> 1 (1D timestep)
+% MATLAB: 1 <-> 1; 2 <-> 2; 3 <-> 3; ...
+% The following example will make it clearer.
+
+% Make sure that loop size increases a function of time 
+% Make sure that the 3D distance between two heads from a given condensin is close to 0
+[num_timepoints_MD, num_monomers, num_dimensions] = size(polys);
+
+% We are going to ignore the last MD timepoint
+% num_timepoints_MD = num_timepoints_MD - 1;
+
+loop_size_timepoint_cell = cell(1, num_timepoints_MD);
+cond_arm_dist_timepoint_cell = cell(1, num_timepoints_MD);
+
+for idx_timepoint = 1:num_timepoints_MD-1
+    curr_poly = squeeze(polys(idx_timepoint, :, :));
+    % note: the following index is multiplied by 60
+    % MATLAB: 1 <-> 1; 2 <-> 61; 3 <-> 121; ...
+    curr_cond_1d_pos = squeeze(condensin_1d_pos(idx_timepoint, :, :));
+
+    % find the unbound cohesin 
+    cohesin_unbound_bool = all(curr_cond_1d_pos == [-1, -1], 2);
+
+    % only select the 1D positions of bound cohesin
+    cohesin_bound_1D_pos = curr_cond_1d_pos(~cohesin_unbound_bool, :);
+    
+    % Calculate loop size;
+    loop_size = diff(cohesin_bound_1D_pos, 1, 2);
+    
+    % Store the data
+    loop_size_timepoint_cell{1, idx_timepoint} = loop_size;
+
+    % Find the 3D position of condensin arms
+    cond_3d_left_pos = curr_poly(bound_condensin_pos(:, 1), :);
+    cond_3d_right_pos = curr_poly(bound_condensin_pos(:, 2), :);
+
+    % Calculate distance between the arms
+    cond_3d_arm_dists = sqrt(vecnorm((cond_3d_left_pos - cond_3d_right_pos), 2, 2));
+
+    % Store the data
+    cond_arm_dist_timepoint_cell{condensin_type, idx_timepoint} = cond_3d_arm_dists; 
+
+end
+
+%% Plot loop size as function of time 
+clf;
+figure(2)
+xbins = linspace(0, 15000, 20);
+for condensin_type = 1:num_condensin_type
+    subplot(1, num_condensin_type, condensin_type)
+    for idx_timepoint = 1:num_timepoints_MD
+        curr_loop_size = loop_size_timepoint_cell{condensin_type, idx_timepoint};
+        histogram(curr_loop_size, xbins, "Normalization", 'pdf')
+        hold on
+    end
+    xlabel('Loop size (monomers)')
+    ylabel('Density')
+    title(sprintf('Condensin %d', condensin_type))
+    ylim([0, 0.001])
+end 
+
+
+%% Plot the distance between condensin arms across all timepoints
+clf;
+figure(1)
+xbins = linspace(0, 3, 100);
+for condensin_type = 1:num_condensin_type
+    subplot(1, num_condensin_type, condensin_type)
+    for idx_timepoint = 1:num_timepoints_MD
+        curr_cond_arm = cond_arm_dist_timepoint_cell{condensin_type, idx_timepoint};
+        histogram(curr_cond_arm, xbins, "Normalization", 'pdf')
+        hold on
+    end
+    xlabel('Euclidean distance between arms')
+    ylabel('Density')
+    title(sprintf('Condensin %d', condensin_type))
+end 
