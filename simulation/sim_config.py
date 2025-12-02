@@ -3,7 +3,6 @@ from pydantic import (
     BaseModel,
     PrivateAttr,
     Field,
-    Extra,
     field_validator,
     model_validator,
     computed_field,
@@ -31,9 +30,9 @@ class SlurmCfg(BaseModel):
     wait: bool = True  # block until job finishes (poll squeue/sacct)
 
 
-class SimConfig(BaseModel, extra=Extra.forbid):
+class SimConfig(BaseModel, extra="forbid"):
     # Make sure that it validates every time the attributes have been updated
-    model_config = ConfigDict(validate_assignment=True)
+    model_config = ConfigDict(validate_assignment=True, validate_default=True)
 
     # --- number of independent replicates per run
     num_replicates: int = Field(1, ge=1)
@@ -199,7 +198,11 @@ class SimConfig(BaseModel, extra=Extra.forbid):
 
     @field_validator("monomer_type_list", mode="after")
     def check_monomer_type_list(cls, v, info):
-        num_monomers = info.data["num_monomers"]
+        num_monomers = info.data.get("num_monomers")
+        # If num_monomers failed validation, bail out; the scalar field error is enough.
+        if num_monomers is None:
+            return v
+        
         if v is None:
             return [0 for _ in range(num_monomers)]
         else:
@@ -211,7 +214,11 @@ class SimConfig(BaseModel, extra=Extra.forbid):
 
     @field_validator("attraction_coefficient_matrix", mode="after")
     def check_attraction_coefficient_matrix(cls, v, info):
-        monomer_type_list = info.data["monomer_type_list"]
+        monomer_type_list = info.data.get("monomer_type_list")
+        # If monomer_type_list failed validation or isn't present yet, don't do anything.
+        if monomer_type_list is None:
+            return v
+
         num_unique_monomer_types = len(set(monomer_type_list))
 
         if v is None:
@@ -224,16 +231,21 @@ class SimConfig(BaseModel, extra=Extra.forbid):
                 raise ValueError(
                     "Number of rows should be equal to the number of unique monomer types."
                 )
-            for v_ in v:
-                if len(v_) != num_unique_monomer_types:
+            for row in v:
+                if len(row) != num_unique_monomer_types:
                     raise ValueError(
                         "Number of columns should be equal to the number of unique monomer types."
                     )
             return v
 
+
     @field_validator("cohesin_loading_probability_list", mode="after")
     def check_cohesin_loading_probability_list(cls, v, info):
-        num_monomers = info.data["num_monomers"]
+        num_monomers = info.data.get("num_monomers")
+        # If num_monomers failed validation, bail out; the scalar field error is enough.
+        if num_monomers is None:
+            return v
+        
         if v is None:
             return [1 / num_monomers for _ in range(num_monomers)]
         else:
@@ -247,7 +259,11 @@ class SimConfig(BaseModel, extra=Extra.forbid):
 
     @field_validator("ctcf_site_location_list", mode="after")
     def check_ctcf_site_location_list(cls, v, info):
-        num_monomers = info.data["num_monomers"]
+        num_monomers = info.data.get("num_monomers")
+        # If num_monomers failed validation, bail out; the scalar field error is enough.
+        if num_monomers is None:
+            return v
+        
         if v is None:
             return []
         else:
@@ -258,7 +274,11 @@ class SimConfig(BaseModel, extra=Extra.forbid):
 
     @field_validator("ctcf_site_direction_list", mode="after")
     def check_ctcf_direction_list(cls, v, info):
-        ctcf_site_location_list = info.data["ctcf_site_location_list"]
+        ctcf_site_location_list = info.data.get("ctcf_site_location_list")
+        if ctcf_site_location_list is None:
+            # Locations missing or invalid; skip to avoid hiding that error
+            return v
+
         num_ctcf_sites = len(ctcf_site_location_list)
         if v is None:
             return ["both" for _ in range(num_ctcf_sites)]
@@ -269,9 +289,14 @@ class SimConfig(BaseModel, extra=Extra.forbid):
                 )
             return v
 
+
     @field_validator("ctcf_site_stall_probability_list", mode="after")
     def check_ctcf_site_stall_probability_list(cls, v, info):
-        ctcf_site_location_list = info.data["ctcf_site_location_list"]
+        ctcf_site_location_list = info.data.get("ctcf_site_location_list")
+        if ctcf_site_location_list is None:
+            # Locations missing or invalid; skip to avoid hiding that error
+            return v
+
         num_ctcf_sites = len(ctcf_site_location_list)
         if v is None:
             return [1 for _ in range(num_ctcf_sites)]
@@ -288,7 +313,11 @@ class SimConfig(BaseModel, extra=Extra.forbid):
 
     @field_validator("ctcf_site_stall_time_list", mode="after")
     def check_ctcf_stall_time_list(cls, v, info):
-        ctcf_site_location_list = info.data["ctcf_site_location_list"]
+        ctcf_site_location_list = info.data.get("ctcf_site_location_list")
+        if ctcf_site_location_list is None:
+            # Locations missing or invalid; skip to avoid hiding that error
+            return v
+        
         num_ctcf_sites = len(ctcf_site_location_list)
         if v is None:
             return [1000000 for _ in range(num_ctcf_sites)]

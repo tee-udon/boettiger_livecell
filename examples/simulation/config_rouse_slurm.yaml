@@ -1,13 +1,13 @@
-# Bookmkeeping
-out_dir: /mnt/home/tudomlumleart/ceph/04_MitoticChromosome/dataset/simulations/20251121_LiveCellSimulation
+# Bookkeeping
+out_dir: F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation
 condition_name: RouseTest
 start_idx_replicate: 0
 
 # Number of independent replicates per run
-num_replicates: 1
+num_replicates: 10
 
 # Core loop extruion simulation hyperparameters
-num_monomers: 10000 # 1 Mb 
+num_monomers: 10000 # 10 Mb 
 
 # Cohesin-related parameters
 num_cohesin: 0 

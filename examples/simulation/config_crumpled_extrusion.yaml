@@ -1,16 +1,16 @@
-# Bookmkeeping
-out_dir: /mnt/home/tudomlumleart/ceph/04_MitoticChromosome/dataset/simulations/20251121_LiveCellSimulation
-condition_name: CrumpledNoExtrusionTest
+# Bookkeeping
+out_dir: F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation
+condition_name: CrumpledExtrusionTest 
 start_idx_replicate: 0
 
 # Number of independent replicates per run
-num_replicates: 1
+num_replicates: 10
 
 # Core loop extruion simulation hyperparameters
-num_monomers: 10000 # 1 Mb 
+num_monomers: 10000 # 10 Mb 
 
 # Cohesin-related parameters
-num_cohesin: 0
+num_cohesin: 100
 cohesin_speed: 1
 cohesin_speed_sd: 0
 cohesin_stall_time: 10
@@ -21,10 +21,10 @@ extrusion_side: 2
 cohesin_loading_probability_list: null
 
 # CTCF-related parameters 
-ctcf_site_location_list: null
-ctcf_site_direction_list: null
-ctcf_site_stall_probability_list: null
-ctcf_site_stall_time_list: null
+ctcf_site_location_list: [4000, 6000]
+ctcf_site_direction_list: ['right', 'left']
+ctcf_site_stall_probability_list: [1, 1]
+ctcf_site_stall_time_list: [100000, 100000]
 
 # Number of LE steps
 num_LE_steps: 10000
