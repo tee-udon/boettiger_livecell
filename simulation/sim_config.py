@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Literal, List, Optional
+from typing import Literal, List, Optional, Tuple
 from pydantic import (
     BaseModel,
     PrivateAttr,
@@ -88,9 +88,11 @@ class SimConfig(BaseModel, extra="forbid"):
         ge=0,
         description="Total number of loop extrusion steps pre-exporting. This is useful for LE steady-state study.",
     )
-    cohesin_loading_probability_list: Optional[List[float]] = Field(
+    cohesin_loading_probability_list: Optional[
+        List[float] | List[Tuple[float, int]]
+    ] = Field(
         None,
-        description="List of cohesin loading probability along the genome. It can either be None or a list of length num_monomers. The total probabilty must sum to 1.",
+        description="List of cohesin loading probability along the genome. It can either be None or a list of length num_monomers or a list of lists, where each list is a length 2 vector that contains the relative cohesin loading weight and the number of monomers in the subchain. The total probabilty must sum to 1.",
     )
     ctcf_site_location_list: Optional[List[int]] = Field(
         None,
@@ -110,9 +112,9 @@ class SimConfig(BaseModel, extra="forbid"):
     )
 
     # --- core MD simulation hyperparameter
-    monomer_type_list: Optional[List[int]] = Field(
+    monomer_type_list: Optional[List[int] | List[List[int]]] = Field(
         None,
-        description="List of monomer types. If not provided, the simulation assumes that all monomers have similar type (homopolymer).",
+        description="Monomer types description. It can either be a list of len(num_monomers) of monomer types or a list of lists. Each nested list is a length 2 vector that contains the monomer type and the number of monomers that have that type in a row. The sum of number of monomers should be equal to num_monomers. If not provided, the simulation assumes that all monomers have similar type (homopolymer).",
     )
     attraction_coefficient_matrix: Optional[List[List[float]]] = Field(
         None,
@@ -207,6 +209,18 @@ class SimConfig(BaseModel, extra="forbid"):
         if v is None:
             return [0 for _ in range(num_monomers)]
         else:
+            # This case means that the user uses [(monomer_type, num_monomer_subchain)] notation
+            if type(v[0]) is list:
+                monomer_type_list = []
+                for v_ in v:
+                    # populated the monomer type list based on the num_monomer_subchain
+                    monomer_type_list += [v_[0] for _ in range(v_[1])]
+                if len(monomer_type_list) != num_monomers:
+                    raise ValueError(
+                        "Sum of total monomers across all subchains must equal to num_monomers"
+                    )
+                return monomer_type_list
+
             if len(v) != num_monomers:
                 raise ValueError(
                     "Length of monomer_type_list must equal to num_monomers."
@@ -249,6 +263,23 @@ class SimConfig(BaseModel, extra="forbid"):
         if v is None:
             return [1 / num_monomers for _ in range(num_monomers)]
         else:
+            if type(v[0]) is tuple:
+                cohesin_loading_probability_list = []
+                for v_ in v:
+                    cohesin_loading_probability_list += [v_[0] for _ in range(v_[1])]
+                # Normalize the probability
+                cohesin_loading_probability_list = np.array(
+                    cohesin_loading_probability_list
+                )
+                cohesin_loading_probability_list /= np.sum(
+                    cohesin_loading_probability_list
+                )
+                if len(cohesin_loading_probability_list) != num_monomers:
+                    raise ValueError(
+                        "Sum of total monomers across all subchains must equal to num_monomers"
+                    )
+                return cohesin_loading_probability_list.tolist()
+
             if abs(sum(v) - 1) > 1e-6:  # Use epsilon for tolerance
                 raise ValueError("Probabilities must sum to 1.")
             if len(v) != num_monomers:
