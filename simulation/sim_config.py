@@ -112,7 +112,7 @@ class SimConfig(BaseModel, extra="forbid"):
     )
 
     # --- core MD simulation hyperparameter
-    monomer_type_list: Optional[List[int] | List[List[int]]] = Field(
+    monomer_type_list: Optional[List[int] | List[Tuple[int, int]]] = Field(
         None,
         description="Monomer types description. It can either be a list of len(num_monomers) of monomer types or a list of lists. Each nested list is a length 2 vector that contains the monomer type and the number of monomers that have that type in a row. The sum of number of monomers should be equal to num_monomers. If not provided, the simulation assumes that all monomers have similar type (homopolymer).",
     )
@@ -210,7 +210,7 @@ class SimConfig(BaseModel, extra="forbid"):
             return [0 for _ in range(num_monomers)]
         else:
             # This case means that the user uses [(monomer_type, num_monomer_subchain)] notation
-            if type(v[0]) is list:
+            if type(v[0]) is tuple:
                 monomer_type_list = []
                 for v_ in v:
                     # populated the monomer type list based on the num_monomer_subchain

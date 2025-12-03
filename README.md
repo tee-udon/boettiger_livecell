@@ -201,7 +201,7 @@ slurm:
 | `extrusion_side`                   | `Literal[1,2]` | `2`      | –                             | `1` = unidirectional, `2` = bidirectional extrusion.                                |
 | `num_LE_steps`                     | `int`          | `1800`   | `>= 0`                        | Total number of LE steps (default ≈ 1800 frames).                                        |
 | `num_LE_steps_init`                | `int`          | `0`      | `>= 0`                        | LE steps run before exporting (for steady state).                                   |
-| `cohesin_loading_probability_list` | `list[float]?` | `null`   | len = `num_monomers`, sum = 1 | Per-monomer cohesin loading probabilities. If `null`, uniform distribution is used. |
+| `cohesin_loading_probability_list` | `List[float]?` \| `List[(float, int)]?` | `null`   | If `None`, loading is uniform (`1 / num_monomers` at each site). If given as `List[float]`, the list length **must equal** `num_monomers` and the values **must sum to 1** (within numerical tolerance). If given as `List[(weight, count)]`, the expanded length **must equal** `num_monomers`; weights are automatically normalized to sum to 1.| Defines the spatial probability distribution for cohesin loading along the polymer. Can be specified per monomer or as weighted blocks that are expanded internally and normalized. |
 
 ### CTCF Site Parameters
 
@@ -216,7 +216,7 @@ slurm:
 
 | Name                            | Type                                             | Default      | Constraints          | Description                                                              |
 | ------------------------------- | ------------------------------------------------ | ------------ | -------------------- | ------------------------------------------------------------------------ |
-| `monomer_type_list`             | `list[int]?`                                     | `null`       | len = `num_monomers` | Monomer types. If `null`, all monomers are treated as the same type.     |
+| `monomer_type_list`             | `List[int]?` \| `List[[int, int]]?`                                  | `null`       | If `None`, the list is automatically set to all zeros with length `num_monomers`. If given as `List[int]`, the list length **must equal** `num_monomers`. If given as `List[[monomer_type, count]]`, the sum of all `count` values **must equal** `num_monomers` after expansion. | Specifies the monomer type at each position along the polymer. These types index into the attraction coefficient matrix to control inter-monomer interactions. If not provided, the polymer is assumed to be a homopolymer with all monomers of type `0`.|
 | `attraction_coefficient_matrix` | `list[list[float]]?`                             | `null`       | square matrix        | Inter-type attraction coefficients. If `null`, no attraction is assumed. |
 | `repulsion`                     | `float`                                          | `5.0`        | `>= 0`               | Repulsion constant between monomers.                                     |
 | `equilibration_timestep`        | `int`                                            | `1500`       | `>= 1`               | MD timesteps used to relax the initial conformation.                     |
