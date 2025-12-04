@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Literal, List, Optional, Tuple
+from typing import Literal, List, Optional, Tuple, Union
 from pydantic import (
     BaseModel,
     PrivateAttr,
@@ -89,7 +89,7 @@ class SimConfig(BaseModel, extra="forbid"):
         description="Total number of loop extrusion steps pre-exporting. This is useful for LE steady-state study.",
     )
     cohesin_loading_probability_list: Optional[
-        List[float] | List[Tuple[float, int]]
+        Union[List[float], List[Tuple[float, int]]]
     ] = Field(
         None,
         description="List of cohesin loading probability along the genome. It can either be None or a list of length num_monomers or a list of lists, where each list is a length 2 vector that contains the relative cohesin loading weight and the number of monomers in the subchain. The total probabilty must sum to 1.",
@@ -112,7 +112,7 @@ class SimConfig(BaseModel, extra="forbid"):
     )
 
     # --- core MD simulation hyperparameter
-    monomer_type_list: Optional[List[int] | List[Tuple[int, int]]] = Field(
+    monomer_type_list: Optional[Union[List[int], List[Tuple[int, int]]]] = Field(
         None,
         description="Monomer types description. It can either be a list of len(num_monomers) of monomer types or a list of lists. Each nested list is a length 2 vector that contains the monomer type and the number of monomers that have that type in a row. The sum of number of monomers should be equal to num_monomers. If not provided, the simulation assumes that all monomers have similar type (homopolymer).",
     )

@@ -26,7 +26,7 @@ To simulate Rouse polymer, run the following command:
 Server 2
 
 ```Powershell
-python "F:\Tee\boettiger-livecell\simulation\main.py" --config "F:\Tee\boettiger-livecell\tests\simulation\config_rouse_slurm.yaml"
+python "F:\Tee\boettiger-livecell\simulation\main.py" --config "F:\Tee\boettiger-livecell\examples\simulation\config_rouse_slurm.yaml"
 ```
 
 This will simulate 10 independent Rouse polymers and output it in folder indicated in `out_dir` parameter in the config file, which is `F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation` in this example.

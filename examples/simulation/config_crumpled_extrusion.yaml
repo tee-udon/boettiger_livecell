@@ -1,5 +1,5 @@
 # Bookkeeping
-out_dir: F:\Tee\LiveCellSimulation\Dataset\20251121_LiveCellSimulation
+out_dir: F:\Tee\LiveCellSimulation\Dataset\20251202_Tutorial
 condition_name: CrumpledExtrusionTest 
 start_idx_replicate: 0
 
@@ -13,9 +13,9 @@ num_monomers: 10000 # 10 Mb
 num_cohesin: 100
 cohesin_speed: 1
 cohesin_speed_sd: 0
-cohesin_stall_time: 10
+cohesin_stall_time: 1000
 cohesin_stall_probability: 1
-cohesin_bound_lifetime: 1000
+cohesin_bound_lifetime: 10000
 cohesin_unbound_lifetime: 1
 extrusion_side: 2
 cohesin_loading_probability_list: null
@@ -48,6 +48,7 @@ plot_LE: true
 
 # backend 
 backend: local
+gpu_device: "0"
 
 # slurm options
 slurm:
