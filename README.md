@@ -1,7 +1,6 @@
 # boettiger-livecell
 
 Simulation engine for dynamic chromosome simulation powered by [OpenMM](https://openmm.org) and [Polychrom](https://github.com/open2c/polychrom).\
-Forked from [boettiger-mitotic](https://github.com/tee-udon/boettiger-mitotic.git).
 
 ## Running Simulations
 
