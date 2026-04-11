@@ -1,7 +1,6 @@
 # boettiger-livecell
 
-Simulation engine for mitotic chromosome simulation powered by [OpenMM](https://openmm.org) and [Polychrom](https://github.com/open2c/polychrom).\
-Forked from [boettiger-mitotic](https://github.com/tee-udon/boettiger-mitotic.git).
+Simulation engine for dynamic chromosome simulation powered by [OpenMM](https://openmm.org) and [Polychrom](https://github.com/open2c/polychrom).\
 
 ## Running Simulations
 
@@ -35,9 +34,9 @@ Anecdotally, this simulation should not take more than 20 minutes if your GPU do
 
 ## Hyperparameters
 
-All parameters are defined using a config `yaml` file.  
+All parameters are defined using a config `yaml` file. More examples can be found [in this folder](https://github.com/tee-udon/boettiger_livecell/tree/main/examples/simulation).
 
-### Example for Rouse Polymer:
+### Example for Rouse Polymer
 
 ```yaml
 # Bookkeeping
