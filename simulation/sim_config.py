@@ -45,8 +45,15 @@ class SimConfig(BaseModel, extra="forbid"):
 
     cohesin_speed: float = Field(
         1.0,
-        ge=1,
-        description="Speed of cohesin (monomers/timestep). Must be greater or equal to 1.",
+        ge=0,
+        description=(
+            "Speed of cohesin, monomers per arm per timestep. Values below 1 are "
+            "allowed and are the intended way to set sub-unit processivity: walk() "
+            "applies this as a per-arm Bernoulli probability, so mean loop size is "
+            "~2 * cohesin_speed * cohesin_bound_lifetime for a two-sided extruder. "
+            "Values above 1 are rounded to an integer number of steps per timestep. "
+            "0 disables extrusion."
+        ),
     )
     cohesin_speed_sd: float = Field(
         0.0,

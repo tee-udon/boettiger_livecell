@@ -261,8 +261,19 @@ def update_SMC_sim(SMCs: list):
     )  # Initialize empty list for gathering loop positions based on SMC arm positions.
     for i in range(len(SMCs)):
         s = SMCs[i]
-        extrusion_speed = s.extrusion_rate
-        for _ in range(extrusion_speed):
+        # extrusion_rate is a per-arm Bernoulli probability applied inside
+        # walk() ("extrusion rate cannot be higher than 1 position per
+        # timestep"), so the outer loop must be an INTEGER count of update
+        # calls, not the rate itself. numba's range() truncates a float:
+        # range(0.45) yields 0 iterations, so every sub-unit speed silently
+        # produced no extrusion at all, and no binding either, because
+        # update() is called from inside this loop.
+        # Unchanged for every integer rate: 1.0 -> 1, 2.0 -> 2, 0.0 -> 0.
+        if s.extrusion_rate <= 0.0:
+            n_update_calls = 0
+        else:
+            n_update_calls = max(1, int(round(s.extrusion_rate)))
+        for _ in range(n_update_calls):
             capture_dist = 1
             s.update()  # Update all SMCs to let them bind/unbind or take a step.
 

@@ -17,6 +17,7 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software."""
 
+import logging
 import time
 import numpy as np
 import polychrom
@@ -64,11 +65,15 @@ def create_random_walk_positivez(step_size, N):
 
 
 class bondUpdater(object):
-    def __init__(self, LEFpositions):
+    def __init__(self, LEFpositions, n_beads=None):
         """
         :param smcTransObject: smc translocator object to work with
+        :param n_beads: chain length. If given, LEF indices outside [0, n_beads)
+            are treated as corrupt and dropped in setup() instead of being
+            handed to OpenMM.
         """
         self.LEFpositions = LEFpositions
+        self.n_beads = n_beads
         self.curtime = 0
         self.allBonds = []
 
@@ -105,11 +110,38 @@ class bondUpdater(object):
         # precalculating all bonds
         allBonds = []
 
-        loaded_positions = self.LEFpositions[self.curtime : self.curtime + blocks]
+        loaded_positions = np.asarray(
+            self.LEFpositions[self.curtime : self.curtime + blocks]
+        )
+
+        # Drop corrupt LEF indices instead of handing them to OpenMM. The LE
+        # rarely emits a bad value: loop_pos in run_sim_LE.update_SMC_sim is
+        # float64, and an unbound extruder can surface as the bit pattern of
+        # the double 1.0, which saturates to INT32_MAX in the int32 h5. Because
+        # setup() collects unique bonds over ALL frames, a single bad entry
+        # anywhere used to abort the whole run with
+        #   HarmonicBondForce: Illegal particle index for a bond: 2147483647
+        # and the retry in simulate_MD then masked it. A dropped bond simply
+        # reads as that extruder being unbound for that frame.
+        valid = np.ones(loaded_positions.shape[:2], dtype=bool)
+        if self.n_beads is not None:
+            in_range = (loaded_positions >= 0) & (loaded_positions < self.n_beads)
+            valid = in_range.all(axis=2)
+            n_bad = int((~valid).sum())
+            if n_bad:
+                frames = np.unique(np.nonzero(~valid)[0])
+                logging.warning(
+                    "bondUpdater: dropped %d corrupt LEF bond(s) across %d frame(s) "
+                    "(first frame %d, valid index range [0, %d)). "
+                    "This is the known run_sim_LE loop_pos dtype bug.",
+                    n_bad, frames.size, int(frames[0]), self.n_beads,
+                )
+
         allBonds = [
             [
                 (int(loaded_positions[i, j, 0]), int(loaded_positions[i, j, 1]))
                 for j in range(loaded_positions.shape[1])
+                if valid[i, j]
             ]
             for i in range(blocks)
         ]
@@ -204,7 +236,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         lef_positions = h5py.File(lef_position_fpath, mode="r")
         LEFpositions = lef_positions["positions"]
         Nframes = LEFpositions.shape[0]
-        milker = bondUpdater(LEFpositions)
+        milker = bondUpdater(LEFpositions, n_beads=N)
 
     else:
         Nframes = (
@@ -342,6 +374,12 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                     a.local_energy_minimization(maxIterations=int(1e4))
                     break
                 except openmm.OpenMMException:
+                    # Log it. This was silent, and the retry below then raised a
+                    # misleading "System object does not own its corresponding
+                    # OpenMM object" that hid the real cause on every failure.
+                    logging.exception(
+                        "local_energy_minimization attempt %d raised; retrying", i
+                    )
                     continue
         else:
             a._apply_forces()
