@@ -43,6 +43,17 @@ class SimConfig(BaseModel, extra="forbid"):
         description="Number of monomers. Approximately 1 kb/monomer.",
     )
 
+    save_every_blocks: int = Field(
+        1,
+        ge=1,
+        description=(
+            "Save polymer positions every Nth LE step. Bonds still advance on "
+            "every step, so raising this buys physical simulation time without "
+            "growing all_conformations.npy. num_LE_steps must be divisible by it. "
+            "One saved frame equals save_every_blocks LE steps, so a lag axis "
+            "measured in frames must be rescaled to compare across values."
+        ),
+    )
     cohesin_speed: float = Field(
         1.0,
         ge=0,

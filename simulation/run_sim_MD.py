@@ -147,7 +147,16 @@ class bondUpdater(object):
         ]
 
         self.allBonds = allBonds
-        self.uniqueBonds = list(set(sum(allBonds, [])))
+        # `sum(allBonds, [])` is QUADRATIC -- it rebuilds the accumulator on
+        # every one of `blocks` concatenations, costing ~n_lefs * blocks^2 / 2
+        # element copies. At 100 extruders x 50000 blocks that was ~40 min of
+        # pure setup before MD started, and it scales with blocks^2, so a
+        # 200000-block run would take hours. This is the same result in one
+        # linear pass.
+        uniq = set()
+        for block in allBonds:
+            uniq.update(block)
+        self.uniqueBonds = list(uniq)
 
         # adding forces and getting bond indices
         self.bondInds = []
@@ -260,7 +269,12 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     np.save(init_conformation_fpath, data)  # Save the initial conformation
 
     # Save all the timepoints
-    saveEveryBlocks = 1  # save every 1 simulation steps. Multiply by loop position sampling (typically every 1 s) for final simulation step frequency, e.g. 1x1 = 1 s.
+    # Save positions every Nth LE step. Bonds still advance every step, so this
+    # buys physical time without growing the trajectory: num_LE_steps 200000
+    # with save_every_blocks 4 gives 4x the MD time at the same 50001 frames.
+    # NOTE 1 frame is then save_every_blocks LE steps, so any lag axis measured
+    # in frames must be rescaled before comparing runs with different values.
+    saveEveryBlocks = cfg.save_every_blocks
     restartSimulationEveryBlocks = Nframes  # Do not restart.
 
     # assertions for easy managing code below
