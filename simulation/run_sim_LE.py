@@ -411,14 +411,22 @@ def init_SMC_sim(cfg: SimConfig) -> List[SMC]:
                 cohesin_loading_probability_list=np.array(
                     cfg.cohesin_loading_probability_list
                 ),
-                ctcf_site_location_list=np.array(cfg.ctcf_site_location_list),
+                # dtype is explicit because a system with no CTCF sites gives an
+                # empty list here, and np.array([]) defaults to float64, which
+                # does not match the int_[:] fields of spec_smc.
+                ctcf_site_location_list=np.array(
+                    cfg.ctcf_site_location_list, dtype=np.int64
+                ),
                 ctcf_site_direction_list=np.array(
-                    [mapping_direction_int[x] for x in cfg.ctcf_site_direction_list]
+                    [mapping_direction_int[x] for x in cfg.ctcf_site_direction_list],
+                    dtype=np.int64,
                 ),
                 ctcf_site_stall_probability_list=np.array(
-                    cfg.ctcf_site_stall_probability_list
+                    cfg.ctcf_site_stall_probability_list, dtype=np.float64
                 ),
-                ctcf_site_stall_time_list=np.array(cfg.ctcf_site_stall_time_list),
+                ctcf_site_stall_time_list=np.array(
+                    cfg.ctcf_site_stall_time_list, dtype=np.float64
+                ),
                 smc_id=i,
             )
         )

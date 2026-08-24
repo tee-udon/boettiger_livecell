@@ -180,10 +180,12 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     repulsionEnergy = cfg.repulsion
     collision_rate = cfg.collision_rate
     attraction_radius = cfg.attraction_radius
+    attractionEnergy = cfg.attraction_energy
     equilibration_timestep = cfg.equilibration_timestep
     initial_conformation = cfg.initial_conformation
     gpu_device = cfg.gpu_device
     N = cfg.num_monomers
+    angle_k = cfg.angle_k
 
     interactionMatrix = np.array(cfg.attraction_coefficient_matrix)
     monomerTypes = np.array(cfg.monomer_type_list)
@@ -279,7 +281,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                 },
                 angle_force_func=forces.angle_force,
                 angle_force_kwargs={
-                    "k": 1.5
+                    "k": angle_k
                     # K is more or less arbitrary, k=4 corresponds to presistence length of 4,
                     # k=1.5 is recommended to make polymer realistically flexible; k=8 is very stiff
                 },
@@ -290,7 +292,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                 nonbonded_force_func=forces.heteropolymer_SSW,
                 nonbonded_force_kwargs={
                     "repulsionEnergy": repulsionEnergy,  # base repulsion energy for all monomers (function default is 3.0)
-                    "attractionEnergy": 3,  # base attraction energy for all monomers (function default is 3.0)
+                    "attractionEnergy": attractionEnergy,  # base attraction energy for all monomers (function default is 3.0)
                     "attractionRadius": attraction_radius,
                     "interactionMatrix": interactionMatrix,
                     "monomerTypes": monomerTypes,

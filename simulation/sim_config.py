@@ -123,6 +123,11 @@ class SimConfig(BaseModel, extra="forbid"):
     repulsion: float = Field(
         5.0, ge=0.0, description="Repulsion constant between monomers."
     )
+    angle_k: float = Field(
+        1.5,
+        ge=0.0,
+        description="Bending stiffness (angle-force k); persistence-length knob. k=1.5 flexible, k=8 stiff.",
+    )
     equilibration_timestep: int = Field(
         1500,
         ge=1,
@@ -134,7 +139,12 @@ class SimConfig(BaseModel, extra="forbid"):
     attraction_radius: float = Field(
         0,
         ge=0.0,
-        description="The distance in which monomer stickiness affects the surrounding.",
+        description="The distance in which monomer stickiness affects the surrounding. NOTE: this also sets the nonbonded cutoff in heteropolymer_SSW, so a value of 0 switches the nonbonded force off entirely, repulsion included. For active excluded volume it must be strictly greater than the repulsion radius of 1.0; 1.5 is the polychrom default.",
+    )
+    attraction_energy: float = Field(
+        3.0,
+        ge=0.0,
+        description="Base attraction well depth (kT) between all monomers in heteropolymer_SSW. Set to 0 together with attraction_radius > 1.0 to obtain pure excluded volume.",
     )
     density: float = Field(
         0.24,
