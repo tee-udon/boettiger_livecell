@@ -310,20 +310,35 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     # indistinguishable from what it does continuously anyway. The RNG stream
     # also differs after a resume, which is a different realisation of the same
     # stochastic process, not a bias.
+    # ⚠️ OFF-BY-ONE, and it is PRE-EXISTING. The equilibration
+    # `a.do_block(steps=equilibration_timestep)` below REPORTS a frame, so block
+    # index 0 is the equilibration state and the LE blocks occupy 1..Nframes. A
+    # completed run therefore holds Nframes+1 blocks -- which is why every
+    # all_conformations.npy is one frame larger than num_LE_steps (50000 steps
+    # -> 6,000,120,128 bytes = 50001 frames, not 50000). Frame 0 is separated
+    # from frame 1 by equilibration_timestep MD steps rather than
+    # num_MD_steps_per_LE, so lag analysis should treat it as suspect.
+    # continue_trajectory() returns the LAST index, so the number of LE blocks
+    # already done is last_block exactly -- no +1.
     resume_block = 0
     if list(base_dir.glob("blocks_*.h5")):
         last_block, cont = reporter.continue_trajectory()
         data = cont["pos"]
-        resume_block = int(last_block) + 1
+        resume_block = int(last_block)
         logging.warning(
-            "RESUMING from block %d of %d (%.1f%% already done). Skipping LE, "
-            "energy minimisation and equilibration.",
+            "RESUMING from LE block %d of %d (%.1f%% already done). Skipping "
+            "LE, energy minimisation and equilibration.",
             resume_block, Nframes, 100.0 * resume_block / Nframes,
         )
     blocks_this_run = Nframes - resume_block
     if blocks_this_run <= 0:
-        logging.warning("All %d blocks already present; assembling output only.",
-                        Nframes)
+        # ⛔ Nothing left to integrate. Must skip the MD loop ENTIRELY, not just
+        # warn: milker.setup(blocks=0) loads no bonds and then pops from an
+        # empty list (IndexError). Zeroing simInitsTotal falls straight through
+        # to the assembly step, which is all a fully-complete run still needs.
+        logging.warning("All %d LE blocks already present; assembling output "
+                        "only, no MD.", Nframes)
+        simInitsTotal = 0
 
     if cfg.PBC_box:
         box_size = int((N / density) ** 0.333)
