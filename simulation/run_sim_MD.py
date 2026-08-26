@@ -283,9 +283,47 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
 
     simInitsTotal = (Nframes) // restartSimulationEveryBlocks
 
+    # overwrite=False so a requeued job does NOT delete the blocks it already
+    # wrote; check_exists=False so a non-empty folder is not an error.
     reporter = HDF5Reporter(
-        folder=base_dir, max_data_length=100, overwrite=True, blocks_only=False
+        folder=base_dir,
+        max_data_length=100,
+        overwrite=False,
+        check_exists=False,
+        blocks_only=False,
     )
+
+    # ---- preemption resume -------------------------------------------------
+    # The blocks_*.h5 files ARE the checkpoint: save_every_blocks writes the
+    # conformation as the run proceeds, so nothing extra needs saving -- only
+    # reading back. polychrom's continue_trajectory() finds the last complete
+    # block, returns its conformation, fixes the reporter's counters so new
+    # output continues the numbering, and removes the partial trailing file
+    # after re-buffering the blocks worth keeping.
+    #
+    # Physics: positions carry over exactly and the LEF stream is precomputed in
+    # the h5, so only the velocities are re-drawn. This is Langevin at
+    # collision_rate 0.03/ps, i.e. a velocity correlation time of ~33 ps against
+    # ~16 ps per block -- roughly 2 blocks. Between preemptions there are
+    # thousands of blocks, so the thermostat has already randomised the
+    # velocities thousands of times over; re-drawing them at the boundary is
+    # indistinguishable from what it does continuously anyway. The RNG stream
+    # also differs after a resume, which is a different realisation of the same
+    # stochastic process, not a bias.
+    resume_block = 0
+    if list(base_dir.glob("blocks_*.h5")):
+        last_block, cont = reporter.continue_trajectory()
+        data = cont["pos"]
+        resume_block = int(last_block) + 1
+        logging.warning(
+            "RESUMING from block %d of %d (%.1f%% already done). Skipping LE, "
+            "energy minimisation and equilibration.",
+            resume_block, Nframes, 100.0 * resume_block / Nframes,
+        )
+    blocks_this_run = Nframes - resume_block
+    if blocks_this_run <= 0:
+        logging.warning("All %d blocks already present; assembling output only.",
+                        Nframes)
 
     if cfg.PBC_box:
         box_size = int((N / density) ** 0.333)
@@ -309,7 +347,12 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         )  # timestep not necessary for variableLangevin
 
         ############################## New code ##############################
-        a.set_data(data, center=True)  # loads a polymer, puts a center of mass at zero
+        # center=False on a resume: the saved conformation is already the state
+        # we are continuing, and recentring would shift it relative to the
+        # coordinates the earlier blocks were written in. Internal distances are
+        # unaffected either way, but keeping the frame consistent avoids a
+        # discontinuity in any absolute-position analysis.
+        a.set_data(data, center=(resume_block == 0))
 
         chain_tuple = [(0, None, False)]
 
@@ -362,13 +405,21 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             milker.setParams(activeParams, inactiveParams)
 
             # this step actually puts all bonds in and sets first bonds to be what they should be
+            # Seek the LEF cursor to the resume point. bondUpdater.setup reads
+            # LEFpositions[curtime : curtime + blocks], so setting curtime is all
+            # that is needed to line the bond stream back up with the resumed
+            # conformation -- the 1D trajectory itself is fixed on disk.
+            milker.curtime = resume_block
             milker.setup(
                 bondForce=a.force_dict["harmonic_bonds"],
-                blocks=restartSimulationEveryBlocks,
+                blocks=blocks_this_run,
             )
 
         # Initialize starting conformation and minimize the energy. Sometimes this does not work, so retry until the energy can be minimized.
-        if iteration == 0:
+        # ⛔ Skipped on a resume: the conformation loaded from the last block is
+        # already relaxed, and minimising it again would drive it off the
+        # trajectory we are continuing.
+        if iteration == 0 and resume_block == 0:
             for i in range(100):
                 try:
                     if i > 0:
@@ -398,12 +449,19 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         else:
             a._apply_forces()
 
-        a.do_block(
-            steps=equilibration_timestep
-        )  # Initial equilibration steps to ensure that we start from a relaxed polymer state.
+        # ⛔ THE ONE THING THAT WOULD CORRUPT A RESUME. equilibration_timestep is
+        # 100,000 MD steps -- a thousand normal blocks -- and milker.step() is NOT
+        # called during it, so the LEF bonds are FROZEN throughout. Left
+        # unguarded, every preemption would inject a "freeze the loops and let
+        # the chain relax" episode into the middle of the trajectory, plus a
+        # stretch of physical time absent from the LE/MD frame correspondence.
+        if resume_block == 0:
+            a.do_block(
+                steps=equilibration_timestep
+            )  # Initial equilibration steps to ensure that we start from a relaxed polymer state.
 
-        for i in range(restartSimulationEveryBlocks):
-            if i < restartSimulationEveryBlocks - 1 and cfg.num_cohesin > 0:
+        for i in range(blocks_this_run):
+            if i < blocks_this_run - 1 and cfg.num_cohesin > 0:
                 curBonds, pastBonds = milker.step(
                     a.context
                 )  # this updates bonds. You can do something with bonds here

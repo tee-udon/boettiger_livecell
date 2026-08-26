@@ -129,6 +129,21 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
     if cfg.num_cohesin == 0:
         log.info("Number of total cohesin = 0. No 1D Loop Extrusion Simulation.")
 
+    elif (run_dir / f"LEFPositions_{idx_run}.h5").exists():
+        # ⛔ CORRECTNESS, not an optimisation. The LE stage is NOT deterministic
+        # -- the numba RNG ignores np.random.seed -- so re-running it after a
+        # preemption produces a DIFFERENT 1D trajectory. simulate_MD resumes the
+        # 3D conformation from the blocks already on disk, and those positions
+        # were evolved under the ORIGINAL bond stream. Re-running LE would splice
+        # them onto a stream that never formed those loops: no error, no crash,
+        # just physically incoherent output. Reuse the existing h5 instead.
+        log.info(
+            "LEFPositions_%d.h5 exists -- reusing it and skipping the LE stage. "
+            "(LE is not deterministic; re-running would desync the bonds from a "
+            "resumed conformation.)",
+            idx_run,
+        )
+
     else:
         log.info("Simulating 1D Loop Extrusion...")
         simulate_LE(cfg, run_dir, idx_run)
