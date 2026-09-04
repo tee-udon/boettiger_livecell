@@ -225,7 +225,7 @@ def test_ctcf_stall_time_bounds_and_length():
     [
         ("num_replicates", 0),
         ("num_monomers", 0),
-        ("cohesin_speed", 0.5),  # ge=1
+        ("cohesin_speed", -0.1),  # ge=0
         ("cohesin_speed_sd", -1),  # ge=0
         ("cohesin_stall_time", 0.5),  # ge=1
         ("cohesin_stall_probability", -0.1),  # < 0
@@ -249,6 +249,18 @@ def test_scalar_field_constraints(field, value):
     # We pass only one overridden field; others keep defaults.
     with pytest.raises(ValidationError):
         SimConfig(**{field: value})
+
+
+@pytest.mark.parametrize("value", [0.0, 0.1, 0.45, 1.0, 1.5, 2.7, 5.0])
+def test_cohesin_speed_accepts_any_non_negative_rate(value):
+    """cohesin_speed is a mean advance per arm per round, not a step count.
+
+    Sub-unit values are the intended way to set processivity below one monomer
+    per round, and fractional values above 1 are honoured too: each arm draws
+    floor(speed) certain steps plus one Bernoulli(frac(speed)) step. This field
+    was ge=1, which blocked the sub-unit mechanism outright.
+    """
+    assert SimConfig(cohesin_speed=value).cohesin_speed == value
 
 
 # -----------------------

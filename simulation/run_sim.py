@@ -90,13 +90,25 @@ def downsampling_LE(cfg: SimConfig, run_dir: Path, run_id: int) -> None:
         [np.load(p, mmap_mode="r") for p in cohesin_pos_files], axis=0
     )
 
+    # An unbound extruder is recorded as -1 by run_sim_LE. Capture that BEFORE
+    # the sister offset below, which would otherwise turn -1 into a perfectly
+    # legal-looking monomer index and lose the distinction entirely.
+    num_monomers = cfg.num_monomers
+    unbound = cohesin_pos_array < 0
+
     # This make sure that the monomer idx of second sister is not the same as the monomer idx of the first sister
     # This will help assign the force field in the MD step
-    num_monomers = cfg.num_monomers
-    cohesin_pos_array += int(num_monomers * run_id)
+    cohesin_pos_array = cohesin_pos_array + int(num_monomers * run_id)
 
     # clip such that the index is greater than 0
     cohesin_pos_array = np.clip(cohesin_pos_array, 1, None)
+
+    # Restore the unbound sentinel. Clipping everything to >= 1 used to turn
+    # every unbound extruder into a self-bond (1, 1) on monomer 1 -- one bogus
+    # bond per unbound extruder per frame, which bondUpdater's range filter
+    # cannot catch, because 1 is a legal index. Negative indices ARE dropped
+    # there, so -1 correctly reads as "this extruder holds no bond this frame".
+    cohesin_pos_array[unbound] = -1
 
     num_timesteps, num_cohesin, num_heads = cohesin_pos_array.shape
     downsampling_ratio = 1  # No downsampling

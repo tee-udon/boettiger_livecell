@@ -58,12 +58,15 @@ class SimConfig(BaseModel, extra="forbid"):
         1.0,
         ge=0,
         description=(
-            "Speed of cohesin, monomers per arm per timestep. Values below 1 are "
-            "allowed and are the intended way to set sub-unit processivity: walk() "
-            "applies this as a per-arm Bernoulli probability, so mean loop size is "
-            "~2 * cohesin_speed * cohesin_bound_lifetime for a two-sided extruder. "
-            "Values above 1 are rounded to an integer number of steps per timestep. "
-            "0 disables extrusion."
+            "Speed of cohesin: MEAN monomers advanced per arm per LE round. Any "
+            "value >= 0 is valid, fractional at any magnitude (0.1, 0.45, 1.5, 5 "
+            "are all honoured exactly). Each arm independently draws "
+            "floor(speed) certain steps plus one Bernoulli(frac(speed)) step per "
+            "round, so below 1 this is exactly 'a speed-0.1 arm has a 1-in-10 "
+            "chance of advancing each round', and waiting times are geometric. "
+            "Mean loop size is ~2 * cohesin_speed * cohesin_bound_lifetime for a "
+            "two-sided extruder, at EVERY speed -- binding and unbinding tick "
+            "once per round and no longer scale with speed. 0 disables extrusion."
         ),
     )
     cohesin_speed_sd: float = Field(
