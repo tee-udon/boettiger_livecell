@@ -19,21 +19,27 @@ def rand_choice_nb(arr, prob):
     return arr[np.searchsorted(np.cumsum(prob), np.random.random(), side="right")]
 
 
+# Every field below uses a FIXED-WIDTH numba type on purpose. types.int_ tracks
+# C long, which is 8 bytes on Linux/macOS but 4 bytes on Windows/MSVC, so a spec
+# written with types.int_ silently changes width across platforms while the
+# arrays handed to __init__ below are built with an explicit np.int64. On a
+# Windows box those two disagree and jitclass construction dies with a
+# TypingError. See tests/test_run_sim_LE_types.py, which guards this.
 spec_smc = [
-    ("N_beads", types.int_),
-    ("SMC_type", types.int_),
-    ("bound_lifetime", types.int_),
-    ("unbound_lifetime", types.int_),
+    ("N_beads", types.int64),
+    ("SMC_type", types.int64),
+    ("bound_lifetime", types.int64),
+    ("unbound_lifetime", types.int64),
     ("SMC_crash_lifetime", types.float64),  # a 1d array
-    ("extrusion_sided", types.int_),
+    ("extrusion_sided", types.int64),
     ("extrusion_rate", types.float64),
     ("extrusion_rate_sd", types.float64),
-    ("extrusion_direction", types.int_),
+    ("extrusion_direction", types.int64),
     ("bound", types.boolean),
-    # ('age', types.int_),
-    ("start_pos", types.int_),
-    ("l_pos", types.int_),
-    ("r_pos", types.int_),
+    # ('age', types.int64),
+    ("start_pos", types.int64),
+    ("l_pos", types.int64),
+    ("r_pos", types.int64),
     ("SMC_crash_prob", types.float64),
     ("SMC_bound_l", types.boolean),
     ("SMC_bound_r", types.boolean),
@@ -43,14 +49,14 @@ spec_smc = [
         "cohesin_loading_probability_list",
         types.float64[:],
     ),
-    ("ctcf_site_location_list", types.int_[:]),
-    ("ctcf_site_direction_list", types.int_[:]),
+    ("ctcf_site_location_list", types.int64[:]),
+    ("ctcf_site_direction_list", types.int64[:]),
     ("ctcf_site_stall_probability_list", types.float64[:]),
     ("ctcf_site_stall_time_list", types.float64[:]),
     ("current_lifetime", types.float64),
     ("CTCF_stall_time_l", types.float64),
     ("CTCF_stall_time_r", types.float64),
-    ("smc_id", types.int_),
+    ("smc_id", types.int64),
 ]
 
 
@@ -455,12 +461,14 @@ def init_SMC_sim(cfg: SimConfig) -> List[SMC]:
                 bound_lifetime=cfg.cohesin_bound_lifetime,
                 unbound_lifetime=cfg.cohesin_unbound_lifetime,
                 extrusion_sided=cfg.extrusion_side,
+                # Every dtype below is explicit. np.array() infers a dtype from
+                # the input, and that inference is both content-dependent (an
+                # empty list gives float64) and platform-dependent (the default
+                # integer was int32 on Windows before NumPy 2). spec_smc pins
+                # fixed widths, so anything inferred here can mismatch it.
                 cohesin_loading_probability_list=np.array(
-                    cfg.cohesin_loading_probability_list
+                    cfg.cohesin_loading_probability_list, dtype=np.float64
                 ),
-                # dtype is explicit because a system with no CTCF sites gives an
-                # empty list here, and np.array([]) defaults to float64, which
-                # does not match the int_[:] fields of spec_smc.
                 ctcf_site_location_list=np.array(
                     cfg.ctcf_site_location_list, dtype=np.int64
                 ),
