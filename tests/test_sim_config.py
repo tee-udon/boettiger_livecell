@@ -263,6 +263,17 @@ def test_cohesin_speed_accepts_any_non_negative_rate(value):
     assert SimConfig(cohesin_speed=value).cohesin_speed == value
 
 
+def test_equilibrate_without_stickiness_is_opt_in():
+    """Off by default, so older configs keep the behaviour they were run with.
+
+    Resolved configs saved before this field existed reload with the default,
+    and those runs relaxed with the stickiness on.
+    """
+    assert SimConfig().equilibrate_without_stickiness is False
+    cfg = SimConfig(equilibrate_without_stickiness=True)
+    assert cfg.equilibrate_without_stickiness is True
+
+
 # -----------------------
 # Round-trip serialization
 # -----------------------

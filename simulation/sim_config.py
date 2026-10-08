@@ -154,6 +154,18 @@ class SimConfig(BaseModel, extra="forbid"):
         ge=1,
         description="Number of MD timestep at the initialization step to relax the initial conformation.",
     )
+    equilibrate_without_stickiness: Literal[True, False] = Field(
+        False,
+        description=(
+            "Switch the sticky-region attraction (the attraction_coefficient_matrix "
+            "term of heteropolymer_SSW) off for energy minimization and "
+            "equilibration, and back on before the first loop-extrusion step, so "
+            "the starting conformation carries no stickiness bias such as a "
+            "pre-formed tether. The uniform attraction_energy and excluded volume "
+            "are left on. Runs resumed after preemption skip both steps, so this "
+            "does not affect them."
+        ),
+    )
     num_MD_steps_per_LE: int = Field(
         1000, ge=1, description="Number of MD timestep between moving cohesin bonds."
     )

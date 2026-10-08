@@ -215,6 +215,29 @@ class bondUpdater(object):
         return self.curBonds, pastBonds
 
 
+def _selective_attraction_param(sim):
+    """Name of the context parameter that scales the sticky-region attraction.
+
+    heteropolymer_SSW multiplies attraction_coefficient_matrix by a single global
+    parameter, ATTReAdd, so zeroing it switches every sticky interaction off at
+    once and leaves the uniform attraction (ATTRe) and the repulsion untouched.
+    polychrom's add_force prefixes global parameters with the force name, so the
+    context sees heteropolymer_SSW_ATTReAdd; matching on the suffix keeps this
+    working if that prefixing ever changes.
+    """
+    force = sim.force_dict["heteropolymer_SSW"]
+    names = [
+        force.getGlobalParameterName(i) for i in range(force.getNumGlobalParameters())
+    ]
+    matches = [n for n in names if n == "ATTReAdd" or n.endswith("_ATTReAdd")]
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Cannot find the sticky-region attraction parameter of "
+            "heteropolymer_SSW; its global parameters are {0}".format(names)
+        )
+    return matches[0]
+
+
 def simulate_MD(cfg: SimConfig, run_dir: Path):
     base_dir = run_dir
 
@@ -223,6 +246,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
     attraction_radius = cfg.attraction_radius
     attractionEnergy = cfg.attraction_energy
     equilibration_timestep = cfg.equilibration_timestep
+    equilibrate_without_stickiness = cfg.equilibrate_without_stickiness
     initial_conformation = cfg.initial_conformation
     gpu_device = cfg.gpu_device
     N = cfg.num_monomers
@@ -430,6 +454,34 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                 blocks=blocks_this_run,
             )
 
+        # Optionally relax with the sticky-region attraction switched OFF, so the
+        # starting conformation carries no stickiness bias (no pre-formed
+        # tether). It has to stay off through the equilibration too, not just
+        # the minimization: minimization is a local descent that can only snap
+        # together sticky monomers already within attraction_radius, whereas
+        # the equilibration is equilibration_timestep steps of real dynamics in
+        # which sticky regions can find each other. Switched back on right
+        # before the first LE step. Fresh starts only -- a resume skips both
+        # steps and builds a new context with the stickiness at full value.
+        sticky_param = None
+        if equilibrate_without_stickiness and iteration == 0 and resume_block == 0:
+            if not np.any(interactionMatrix) or attraction_radius <= 1.0:
+                logging.warning(
+                    "equilibrate_without_stickiness is set, but this config has no "
+                    "sticky-region attraction (all-zero attraction_coefficient_matrix "
+                    "or attraction_radius <= 1.0), so it changes nothing."
+                )
+            a._apply_forces()  # create the context now so the parameter can be set
+            sticky_param = _selective_attraction_param(a)
+            sticky_value = a.context.getParameter(sticky_param)
+            a.context.setParameter(sticky_param, 0.0)
+            logging.info(
+                "Sticky-region attraction OFF for minimization and equilibration "
+                "(%s: %g -> 0).",
+                sticky_param,
+                sticky_value,
+            )
+
         # Initialize starting conformation and minimize the energy. Sometimes this does not work, so retry until the energy can be minimized.
         # ⛔ Skipped on a resume: the conformation loaded from the last block is
         # already relaxed, and minimising it again would drive it off the
@@ -474,6 +526,14 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             a.do_block(
                 steps=equilibration_timestep
             )  # Initial equilibration steps to ensure that we start from a relaxed polymer state.
+
+        if sticky_param is not None:
+            a.context.setParameter(sticky_param, sticky_value)
+            logging.info(
+                "Sticky-region attraction back ON for loop extrusion (%s = %g).",
+                sticky_param,
+                sticky_value,
+            )
 
         for i in range(blocks_this_run):
             if i < blocks_this_run - 1 and cfg.num_cohesin > 0:
