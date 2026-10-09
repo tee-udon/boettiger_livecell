@@ -64,6 +64,27 @@ def create_random_walk_positivez(step_size, N):
     return np.vstack([x, y, z]).T
 
 
+def _initial_conformation(initial_conformation, N, density):
+    """Starting chain for simulate_MD: crumpled, random_walk or random_walk_z.
+
+    The first start and the minimization retries both come from here, so the two
+    cannot drift apart again: the retry branch used to list only crumpled and
+    random_walk, so a random_walk_z run whose first minimization failed died with
+    "initial_conformation must either be crumpled or random_walk" instead of
+    retrying from a new random walk.
+    """
+    if initial_conformation == "crumpled":
+        # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
+        return grow_cubic(N, int((N / density) ** 0.333))
+    if initial_conformation == "random_walk":
+        return create_random_walk(step_size=1, N=N)
+    if initial_conformation == "random_walk_z":
+        return create_random_walk_positivez(step_size=1, N=N)
+    raise ValueError(
+        "initial_conformation must either be crumpled or random_walk or random_walk_z"
+    )
+
+
 class bondUpdater(object):
     def __init__(self, LEFpositions, n_beads=None):
         """
@@ -114,22 +135,35 @@ class bondUpdater(object):
             self.LEFpositions[self.curtime : self.curtime + blocks]
         )
 
-        # Drop corrupt LEF indices instead of handing them to OpenMM. The LE
-        # rarely emits a bad value: loop_pos in run_sim_LE.update_SMC_sim is
-        # float64, and an unbound extruder can surface as the bit pattern of
-        # the double 1.0, which saturates to INT32_MAX in the int32 h5. Because
-        # setup() collects unique bonds over ALL frames, a single bad entry
-        # anywhere used to abort the whole run with
-        #   HarmonicBondForce: Illegal particle index for a bond: 2147483647
-        # and the retry in simulate_MD then masked it. A dropped bond simply
-        # reads as that extruder being unbound for that frame.
+        # Drop LEF entries that are not a bond instead of handing them to
+        # OpenMM. Two kinds, both dropped, only one warned about:
+        #   * the unbound sentinel -1 on both feet. downsampling_LE writes it
+        #     for an extruder that holds no bond this frame, so every run with
+        #     unbinding has some. Expected -- not a warning. (It used to be
+        #     reported as "corrupt", which sent the advisor looking for a bug.)
+        #   * any other index outside [0, n_beads): corrupt. loop_pos in
+        #     run_sim_LE.update_SMC_sim is float64, and an unbound extruder can
+        #     surface as the bit pattern of the double 1.0, which saturates to
+        #     INT32_MAX in the int32 h5. Because setup() collects unique bonds
+        #     over ALL frames, a single bad entry anywhere used to abort the
+        #     whole run with
+        #       HarmonicBondForce: Illegal particle index for a bond: 2147483647
+        #     and the retry in simulate_MD then masked it.
+        # A dropped bond simply reads as that extruder being unbound for that frame.
         valid = np.ones(loaded_positions.shape[:2], dtype=bool)
         if self.n_beads is not None:
             in_range = (loaded_positions >= 0) & (loaded_positions < self.n_beads)
             valid = in_range.all(axis=2)
-            n_bad = int((~valid).sum())
+            unbound = (loaded_positions == -1).all(axis=2)
+            corrupt = ~valid & ~unbound
+            if unbound.any():
+                logging.info(
+                    "bondUpdater: %d unbound extruder-frame(s) hold no bond.",
+                    int(unbound.sum()),
+                )
+            n_bad = int(corrupt.sum())
             if n_bad:
-                frames = np.unique(np.nonzero(~valid)[0])
+                frames = np.unique(np.nonzero(corrupt)[0])
                 logging.warning(
                     "bondUpdater: dropped %d corrupt LEF bond(s) across %d frame(s) "
                     "(first frame %d, valid index range [0, %d)). "
@@ -276,17 +310,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             cfg.num_LE_steps // 1
         )  # TODO: change this to subsampling ratio variable
 
-    if initial_conformation == "crumpled":
-        # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
-        data = grow_cubic(N, int((N / density) ** 0.333))
-    elif initial_conformation == "random_walk":
-        data = create_random_walk(step_size=1, N=N)
-    elif initial_conformation == "random_walk_z":
-        data = create_random_walk_positivez(step_size=1, N=N)
-    else:
-        raise ValueError(
-            "initial_conformation must either be crumpled or random_walk or random_walk_z"
-        )
+    data = _initial_conformation(initial_conformation, N, density)
 
     # Save the initial conformation
     init_conformation_fpath = base_dir / "init_conformation.npy"
@@ -490,15 +514,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
             for i in range(100):
                 try:
                     if i > 0:
-                        if initial_conformation == "crumpled":
-                            # Create a semi-dense non-catenated chain. After relaxation this resembles interphase chromatin.
-                            data = grow_cubic(N, int((N / density) ** 0.333))
-                        elif initial_conformation == "random_walk":
-                            data = create_random_walk(step_size=1, N=N)
-                        else:
-                            raise ValueError(
-                                "initial_conformation must either be crumpled or random_walk"
-                            )
+                        data = _initial_conformation(initial_conformation, N, density)
                         np.save(init_conformation_fpath, data)
                         a.set_data(
                             data, center=True
