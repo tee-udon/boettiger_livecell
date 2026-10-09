@@ -152,7 +152,8 @@ def test_ctcf_defaults_when_locations_given():
     )
     assert cfg.ctcf_site_direction_list == ["both", "both"]
     assert cfg.ctcf_site_stall_probability_list == [1, 1]
-    assert cfg.ctcf_site_stall_time_list == [1000000, 1000000]
+    # Permanent stall. f0e3b14 changed this default from 1e6 to np.inf.
+    assert cfg.ctcf_site_stall_time_list == [float("inf"), float("inf")]
 
 
 def test_ctcf_location_out_of_range_low_raises():

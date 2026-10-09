@@ -24,7 +24,8 @@ import polychrom
 
 from polychrom import forces
 from polychrom import forcekits
-from polychrom.simulation import Simulation
+import polychrom.simulation as _polychrom_simulation
+from polychrom.simulation import Simulation, EKExceedsError
 from polychrom.starting_conformations import grow_cubic, create_random_walk
 from polychrom.hdf5_format import HDF5Reporter, list_URIs, load_URI
 import openmm
@@ -33,6 +34,26 @@ import h5py
 
 from sim_config import SimConfig
 from pathlib import Path
+
+
+class _PerfCounterClock:
+    """Stands in for the time module inside polychrom.simulation.
+
+    do_block times each block with time.time() only to log steps per second, and
+    divides by the difference. On Windows time.time() advances in ~16 ms ticks,
+    so a short block can time as 0 s and the run dies with ZeroDivisionError --
+    before that block is saved. perf_counter resolves well under a microsecond.
+    Those two time.time() calls are polychrom.simulation's only use of time;
+    anything else is passed through to the real module.
+    """
+
+    time = staticmethod(time.perf_counter)
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
+_polychrom_simulation.time = _PerfCounterClock()
 
 
 def _random_points_sphere(N):
@@ -270,6 +291,32 @@ def _selective_attraction_param(sim):
             "heteropolymer_SSW; its global parameters are {0}".format(names)
         )
     return matches[0]
+
+
+def _do_block_explained(sim, steps, cfg, phase):
+    """sim.do_block, with polychrom's bare "Ek=... exceeds 20" explained.
+
+    That error is all the 2026-10-08 crash printed. It means the chain overheated,
+    and the usual cause is a config with too much attraction for its repulsion.
+    """
+    try:
+        sim.do_block(steps=steps)
+    except EKExceedsError as err:
+        hint = ""
+        if cfg.attraction_radius > 1.0 and cfg.attraction_energy > 0.5:
+            hint = (
+                f" Most likely cause: attraction_energy is {cfg.attraction_energy:g} kT "
+                "between every pair of monomers, which collapses the whole chain. Set "
+                "attraction_energy: 0 unless that is intended."
+            )
+        raise EKExceedsError(
+            f"{err}. The chain overheated during {phase}: the kinetic energy passed "
+            "polychrom's limit of 20 kT per monomer, where a healthy run stays near "
+            f"1.5.{hint} Settings involved: attraction_energy "
+            f"{cfg.attraction_energy:g} kT, strongest sticky contact "
+            f"{np.max(cfg.attraction_coefficient_matrix):g} kT, repulsion "
+            f"{cfg.repulsion:g} kT, attraction_radius {cfg.attraction_radius:g}."
+        ) from err
 
 
 def simulate_MD(cfg: SimConfig, run_dir: Path):
@@ -539,8 +586,8 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
         # the chain relax" episode into the middle of the trajectory, plus a
         # stretch of physical time absent from the LE/MD frame correspondence.
         if resume_block == 0:
-            a.do_block(
-                steps=equilibration_timestep
+            _do_block_explained(
+                a, equilibration_timestep, cfg, "equilibration"
             )  # Initial equilibration steps to ensure that we start from a relaxed polymer state.
 
         if sticky_param is not None:
@@ -557,7 +604,7 @@ def simulate_MD(cfg: SimConfig, run_dir: Path):
                     a.context
                 )  # this updates bonds. You can do something with bonds here
             if i % saveEveryBlocks == (saveEveryBlocks - 1):
-                a.do_block(steps=steps)
+                _do_block_explained(a, steps, cfg, "loop extrusion")
             else:
                 a.integrator.step(
                     steps
