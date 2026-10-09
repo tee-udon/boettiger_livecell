@@ -19,23 +19,27 @@ def rand_choice_nb(arr, prob):
     return arr[np.searchsorted(np.cumsum(prob), np.random.random(), side="right")]
 
 
+# Every field below uses a FIXED-WIDTH numba type on purpose. types.int_ tracks
+# C long, which is 8 bytes on Linux/macOS but 4 bytes on Windows/MSVC, so a spec
+# written with types.int_ silently changes width across platforms while the
+# arrays handed to __init__ below are built with an explicit np.int64. On a
+# Windows box those two disagree and jitclass construction dies with a
+# TypingError. See tests/test_run_sim_LE_types.py, which guards this.
 spec_smc = [
-    ("N_beads", types.int_),
-    ("SMC_type", types.int_),
-    ("bound_lifetime", types.int_),
-    ("unbound_lifetime", types.int_),
+    ("N_beads", types.int64),
+    ("SMC_type", types.int64),
+    ("bound_lifetime", types.int64),
+    ("unbound_lifetime", types.int64),
     ("SMC_crash_lifetime", types.float64),  # a 1d array
-    ("extrusion_sided", types.int_),
+    ("extrusion_sided", types.int64),
     ("extrusion_rate", types.float64),
     ("extrusion_rate_sd", types.float64),
-    ("extrusion_direction", types.int_),
+    ("extrusion_direction", types.int64),
     ("bound", types.boolean),
-    # ('age', types.int_),
-    ("i", types.int_),
-    ("random_numbers", types.float32[:]),
-    ("start_pos", types.int_),
-    ("l_pos", types.int_),
-    ("r_pos", types.int_),
+    # ('age', types.int64),
+    ("start_pos", types.int64),
+    ("l_pos", types.int64),
+    ("r_pos", types.int64),
     ("SMC_crash_prob", types.float64),
     ("SMC_bound_l", types.boolean),
     ("SMC_bound_r", types.boolean),
@@ -45,14 +49,14 @@ spec_smc = [
         "cohesin_loading_probability_list",
         types.float64[:],
     ),
-    ("ctcf_site_location_list", types.int_[:]),
-    ("ctcf_site_direction_list", types.int_[:]),
+    ("ctcf_site_location_list", types.int64[:]),
+    ("ctcf_site_direction_list", types.int64[:]),
     ("ctcf_site_stall_probability_list", types.float64[:]),
     ("ctcf_site_stall_time_list", types.float64[:]),
     ("current_lifetime", types.float64),
     ("CTCF_stall_time_l", types.float64),
     ("CTCF_stall_time_r", types.float64),
-    ("smc_id", types.int_),
+    ("smc_id", types.int64),
 ]
 
 
@@ -96,29 +100,62 @@ class SMC:
 
         self.smc_id = smc_id
         self.unbind()  # Initialize in unbound state.
-        self.i = 0
-        self.random_numbers = np.random.random(10000).astype(np.float32)
         # print(self.current_lifetime)
 
     def set_extrusion_rate(self, extrusion_rate, extrusion_rate_sd):
+        """Mean monomers an arm advances per LE round. Any rate >= 0 is valid.
+
+        No longer rounded above 1: draw_step_budget() splits the rate into
+        floor(rate) guaranteed steps plus one Bernoulli(frac(rate)) step, so a
+        fractional rate is honoured exactly at every magnitude, not just below 1.
+        """
         if extrusion_rate == 0:  # For SMC-free simulation purposes.
-            self.extrusion_rate = 0
+            self.extrusion_rate = 0.0
         else:
             self.extrusion_rate = np.random.normal(
                 loc=extrusion_rate, scale=extrusion_rate_sd
-            )  # extrusion_rate #scale used for larger spread in rates. Set to 0 if no spread.
-            if self.extrusion_rate > 1:
-                self.extrusion_rate = np.round(self.extrusion_rate)
+            )  # scale used for larger spread in rates. Set to 0 if no spread.
+            # A wide spread around a small mean can draw a NEGATIVE rate. That
+            # used to disable the extruder silently for the entire run, so
+            # clamp it to "never steps" rather than something meaningless.
+            if self.extrusion_rate < 0.0:
+                self.extrusion_rate = 0.0
 
     def draw_random(self):
-        self.i += 1
-        if self.i == len(self.random_numbers) - 1:
-            self.i = 0
-        return self.random_numbers[self.i]
+        # A fresh draw every call. This previously indexed a fixed pool of
+        # 10000 numbers generated once per SMC and cycled with period 9999. A
+        # bound, unstalled extruder consumes exactly 3 numbers per round and
+        # gcd(3, 9999) = 3, so each arm reread the SAME 3333 numbers forever:
+        # the step pattern was exactly periodic at lag 3333, each extruder's
+        # realized rate was biased by ~6%, and 3.8% of extruders drew no number
+        # below 1/lifetime and could therefore NEVER unbind.
+        return np.random.random()
 
-    def update(self):
+    def draw_step_budget(self):
+        """Unit steps one arm may take this round: floor(rate) + Bernoulli(frac).
+
+        The mean is exactly extrusion_rate at every rate. Below 1 this collapses
+        to a single Bernoulli(rate) draw, so waiting times stay geometric --
+        the "speed 0.1 means a 1-in-10 chance of stepping each round" semantics.
+        Called once per arm so the two arms stay independent.
+        """
+        if not self.bound or self.extrusion_rate <= 0.0:
+            return 0
+        n = int(self.extrusion_rate)
+        if self.draw_random() < self.extrusion_rate - n:
+            n += 1
+        return n
+
+    def update_state(self):
+        """Binding, unbinding and stall-timer decay. Runs ONCE per LE round.
+
+        Walking is deliberately NOT done here (see walk()). When this logic ran
+        once per unit step instead, an extruder with speed 5 also unbound and
+        decayed its stalls 5x faster, so speed and lifetime cancelled exactly
+        and loop size was blind to any speed above 1.
+        """
         # print(self.current_lifetime)
-        # Perform stochastic binding or unbding steps, and try to walk if bound.
+        # Perform stochastic binding or unbding steps.
         if not self.bound:  # and (self.age > self.current_lifetime): #Binding event
             if (
                 self.bound_lifetime == 0
@@ -150,7 +187,6 @@ class SMC:
                 if self.CTCF_bound_r:
                     if self.draw_random() < 1 / self.CTCF_stall_time_r:
                         self.CTCF_bound_r = False
-                self.walk()
 
     def pick_start(self, p):
         n = self.N_beads - 3
@@ -198,45 +234,44 @@ class SMC:
         self.l_pos = -1
         self.r_pos = -1
 
-    def walk(self):
-        # Walking step if not stalled at barrier or another SMC. Each arm treated separately.
+    def walk(self, step_l, step_r):
+        """Advance each arm by AT MOST ONE monomer, if it still has budget this
+        round (step_l / step_r) and is not stalled at a barrier or another SMC.
+
+        Always one monomer per call, never `extrusion_rate` monomers at once:
+        update_SMC_sim re-runs collision detection between calls with
+        capture_dist = 1, so a multi-monomer jump would step straight over a
+        CTCF site or another extruder. A fast extruder gets more CALLS per
+        round, not a longer stride.
+
+        The per-arm Bernoulli that used to live here now lives in
+        draw_step_budget(), which generalises it to rates above 1.
+        """
         step_size = 1
 
-        # Now when it walks if there are multiple SMCs in a row, this is buggy
-        # because it should also check if there are other SMCs after
-        # Now this issue is fixed because we walk 1 step at a time!
-
         if self.extrusion_sided == 2:
-            if not (
+            if step_l and not (
                 self.CTCF_bound_l or self.SMC_bound_l
             ):  # Only step if not CTCF/SMC bound on this side.
-                if (
-                    self.draw_random() < self.extrusion_rate
-                ):  # Note: extrusion rate cannot be higher than 1 position per timestep in this setup, would need to add this if needed.
-                    self.l_pos -= step_size
+                self.l_pos -= step_size
 
-            if not (
+            if step_r and not (
                 self.CTCF_bound_r or self.SMC_bound_r
             ):  # Only step if not CTCF/SMC bound on this side.
-                if self.draw_random() < self.extrusion_rate:
-                    self.r_pos += step_size
+                self.r_pos += step_size
 
         elif self.extrusion_sided == 1:
             if self.extrusion_direction == -1:
-                if not (
+                if step_l and not (
                     self.CTCF_bound_l or self.SMC_bound_l
                 ):  # Only step if not CTCF/SMC bound on this side.
-                    if (
-                        self.draw_random() < self.extrusion_rate
-                    ):  # Note: extrusion rate cannot be higher than 1 position per timestep in this setup, would need to add this if needed.
-                        self.l_pos -= step_size
+                    self.l_pos -= step_size
 
             elif self.extrusion_direction == 1:
-                if not (
+                if step_r and not (
                     self.CTCF_bound_r or self.SMC_bound_r
                 ):  # Only step if not CTCF/SMC bound on this side.
-                    if self.draw_random() < self.extrusion_rate:
-                        self.r_pos += step_size
+                    self.r_pos += step_size
 
         if (self.l_pos < 0) or (
             self.r_pos >= self.N_beads
@@ -256,15 +291,33 @@ class SMC:
 @njit(parallel=False)  # Sometimes segfaults if run in paralell...
 def update_SMC_sim(SMCs: list):
     # Runs every SMC simulation step, updates all SMCs and barriers, checks for potential interactions.
+    # int64, matching res_loop_pos and the int32 LEFPositions h5 downstream.
+    # This was float64, which fed a float into an integer bond pipeline.
     loop_pos = -np.ones(
-        (len(SMCs), 2)
+        (len(SMCs), 2), dtype=np.int64
     )  # Initialize empty list for gathering loop positions based on SMC arm positions.
     for i in range(len(SMCs)):
         s = SMCs[i]
-        extrusion_speed = s.extrusion_rate
-        for _ in range(extrusion_speed):
+
+        # Binding, unbinding and stall decay tick exactly ONCE per LE round, so
+        # the lifetime clock is a per-ROUND clock and does not scale with speed.
+        # Previously this lived inside the stepping loop, so a speed-5 extruder
+        # unbound 5x faster and its loop size came out identical to speed 1.
+        s.update_state()
+
+        # Independent budget per arm: floor(rate) certain steps plus one
+        # Bernoulli(frac(rate)) step. Mean advance is exactly extrusion_rate,
+        # and below 1 it is the plain per-arm Bernoulli it has always been.
+        n_l = s.draw_step_budget()
+        n_r = s.draw_step_budget()
+        n_max = n_l if n_l > n_r else n_r
+
+        # At least one pass, so an extruder that takes no step this round is
+        # still recorded and still resolves its CTCF/SMC collisions.
+        for k in range(max(1, n_max)):
             capture_dist = 1
-            s.update()  # Update all SMCs to let them bind/unbind or take a step.
+            if s.bound:
+                s.walk(k < n_l, k < n_r)
 
             if s.bound:  # Complex has to be bound to form a loop
                 loop_pos[i, 0] = s.l_pos
@@ -408,17 +461,27 @@ def init_SMC_sim(cfg: SimConfig) -> List[SMC]:
                 bound_lifetime=cfg.cohesin_bound_lifetime,
                 unbound_lifetime=cfg.cohesin_unbound_lifetime,
                 extrusion_sided=cfg.extrusion_side,
+                # Every dtype below is explicit. np.array() infers a dtype from
+                # the input, and that inference is both content-dependent (an
+                # empty list gives float64) and platform-dependent (the default
+                # integer was int32 on Windows before NumPy 2). spec_smc pins
+                # fixed widths, so anything inferred here can mismatch it.
                 cohesin_loading_probability_list=np.array(
-                    cfg.cohesin_loading_probability_list
+                    cfg.cohesin_loading_probability_list, dtype=np.float64
                 ),
-                ctcf_site_location_list=np.array(cfg.ctcf_site_location_list),
+                ctcf_site_location_list=np.array(
+                    cfg.ctcf_site_location_list, dtype=np.int64
+                ),
                 ctcf_site_direction_list=np.array(
-                    [mapping_direction_int[x] for x in cfg.ctcf_site_direction_list]
+                    [mapping_direction_int[x] for x in cfg.ctcf_site_direction_list],
+                    dtype=np.int64,
                 ),
                 ctcf_site_stall_probability_list=np.array(
-                    cfg.ctcf_site_stall_probability_list
+                    cfg.ctcf_site_stall_probability_list, dtype=np.float64
                 ),
-                ctcf_site_stall_time_list=np.array(cfg.ctcf_site_stall_time_list),
+                ctcf_site_stall_time_list=np.array(
+                    cfg.ctcf_site_stall_time_list, dtype=np.float64
+                ),
                 smc_id=i,
             )
         )

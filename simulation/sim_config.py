@@ -5,6 +5,7 @@ from pydantic import (
     PrivateAttr,
     Field,
     field_validator,
+    model_validator,
     ConfigDict,
 )
 
@@ -43,10 +44,31 @@ class SimConfig(BaseModel, extra="forbid"):
         description="Number of monomers. Approximately 1 kb/monomer.",
     )
 
+    save_every_blocks: int = Field(
+        1,
+        ge=1,
+        description=(
+            "Save polymer positions every Nth LE step. Bonds still advance on "
+            "every step, so raising this buys physical simulation time without "
+            "growing all_conformations.npy. num_LE_steps must be divisible by it. "
+            "One saved frame equals save_every_blocks LE steps, so a lag axis "
+            "measured in frames must be rescaled to compare across values."
+        ),
+    )
     cohesin_speed: float = Field(
         1.0,
-        ge=1,
-        description="Speed of cohesin (monomers/timestep). Must be greater or equal to 1.",
+        ge=0,
+        description=(
+            "Speed of cohesin: MEAN monomers advanced per arm per LE round. Any "
+            "value >= 0 is valid, fractional at any magnitude (0.1, 0.45, 1.5, 5 "
+            "are all honoured exactly). Each arm independently draws "
+            "floor(speed) certain steps plus one Bernoulli(frac(speed)) step per "
+            "round, so below 1 this is exactly 'a speed-0.1 arm has a 1-in-10 "
+            "chance of advancing each round', and waiting times are geometric. "
+            "Mean loop size is ~2 * cohesin_speed * cohesin_bound_lifetime for a "
+            "two-sided extruder, at EVERY speed -- binding and unbinding tick "
+            "once per round and no longer scale with speed. 0 disables extrusion."
+        ),
     )
     cohesin_speed_sd: float = Field(
         0.0,
@@ -123,10 +145,27 @@ class SimConfig(BaseModel, extra="forbid"):
     repulsion: float = Field(
         5.0, ge=0.0, description="Repulsion constant between monomers."
     )
+    angle_k: float = Field(
+        1.5,
+        ge=0.0,
+        description="Bending stiffness (angle-force k); persistence-length knob. k=1.5 flexible, k=8 stiff.",
+    )
     equilibration_timestep: int = Field(
         1500,
         ge=1,
         description="Number of MD timestep at the initialization step to relax the initial conformation.",
+    )
+    equilibrate_without_stickiness: Literal[True, False] = Field(
+        False,
+        description=(
+            "Switch the sticky-region attraction (the attraction_coefficient_matrix "
+            "term of heteropolymer_SSW) off for energy minimization and "
+            "equilibration, and back on before the first loop-extrusion step, so "
+            "the starting conformation carries no stickiness bias such as a "
+            "pre-formed tether. The uniform attraction_energy and excluded volume "
+            "are left on. Runs resumed after preemption skip both steps, so this "
+            "does not affect them."
+        ),
     )
     num_MD_steps_per_LE: int = Field(
         1000, ge=1, description="Number of MD timestep between moving cohesin bonds."
@@ -134,7 +173,12 @@ class SimConfig(BaseModel, extra="forbid"):
     attraction_radius: float = Field(
         0,
         ge=0.0,
-        description="The distance in which monomer stickiness affects the surrounding.",
+        description="The distance in which monomer stickiness affects the surrounding. NOTE: this also sets the nonbonded cutoff in heteropolymer_SSW, so a value of 0 switches the nonbonded force off entirely, repulsion included. For active excluded volume it must be strictly greater than the repulsion radius of 1.0; 1.5 is the polychrom default. Must be 0 or above 1.0.",
+    )
+    attraction_energy: float = Field(
+        3.0,
+        ge=0.0,
+        description="Base attraction well depth (kT) between ALL monomers in heteropolymer_SSW. Must be set explicitly whenever attraction_radius > 1.0, because the 3 kT default collapses the chain and typically ends the run with EKExceedsError. Set to 0 together with attraction_radius > 1.0 to obtain pure excluded volume plus only the sticky regions.",
     )
     density: float = Field(
         0.24,
@@ -360,3 +404,61 @@ class SimConfig(BaseModel, extra="forbid"):
                 if v_ < 1:
                     raise ValueError("CTCF expected stall time should be at least 1")
             return v
+
+    @model_validator(mode="after")
+    def check_md_settings(self):
+        """Settings that are each valid alone but wrong together. Caught here, at
+        load time, because otherwise they crash late (after the loop extrusion has
+        run) or, worse, silently simulate something else."""
+        problems = []
+        r = self.attraction_radius
+        matrix = np.asarray(self.attraction_coefficient_matrix, dtype=float)
+        types = sorted(set(self.monomer_type_list))
+
+        if 0 < r <= 1.0:
+            problems.append(
+                f"attraction_radius is {r:g}. It must be 0, which switches the nonbonded "
+                "force off (no excluded volume and no stickiness), or above 1.0 (1.5 is "
+                "standard). In between, the cutoff slices through the repulsive core."
+            )
+        if r == 0 and matrix.any():
+            problems.append(
+                "attraction_coefficient_matrix defines sticky interactions, but "
+                "attraction_radius is 0, which switches the nonbonded force off, so "
+                "nothing would stick. Set attraction_radius: 1.5."
+            )
+        # The 2026-10-08 EKExceedsError: older configs never set attraction_energy,
+        # and the code they were written for applied no uniform attraction. The
+        # 3 kT default makes every monomer pair attract and the chain overheats.
+        if r > 1.0 and "attraction_energy" not in self.model_fields_set:
+            problems.append(
+                "attraction_radius above 1.0 switches the attraction on, so set "
+                "attraction_energy explicitly. It is the attraction between EVERY pair "
+                "of monomers, in kT: 0 gives excluded volume plus only the sticky "
+                "regions; the default of 3 collapses the whole chain and typically "
+                "stops the run with EKExceedsError."
+            )
+        if not np.allclose(matrix, matrix.T):
+            # polychrom's heteropolymer_SSW refuses it, but only at MD time
+            problems.append("attraction_coefficient_matrix must be symmetric.")
+        if types != list(range(len(types))):
+            # polychrom sizes the interactions by the largest type, so a gap
+            # (types 0 and 2 with a 2x2 matrix) fails at MD time
+            problems.append(
+                f"monomer types must be numbered 0, 1, 2, ... without gaps; got {types}."
+            )
+        if self.num_LE_steps % self.save_every_blocks != 0:
+            problems.append(
+                f"num_LE_steps ({self.num_LE_steps}) must be a multiple of "
+                f"save_every_blocks ({self.save_every_blocks})."
+            )
+        if self.PBC_box and r > 0:
+            box = int((self.num_monomers / self.density) ** 0.333)  # as in run_sim_MD
+            if box <= 2 * r:
+                problems.append(
+                    f"the periodic box is {box} bond lengths (from num_monomers and "
+                    f"density); it must be more than twice attraction_radius ({r:g})."
+                )
+        if problems:
+            raise ValueError("MD settings: " + " | ".join(problems))
+        return self

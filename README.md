@@ -77,7 +77,7 @@ attraction_coefficient_matrix: null
 repulsion: 0
 equilibration_timestep: 100000 
 num_MD_steps_per_LE: 1000
-attraction_radius: 0 # This has to be 0 when there is no attraction!
+attraction_radius: 0 # 0 switches the nonbonded force off: no excluded volume, no stickiness. For either, use 1.5 and set attraction_energy (0 = only sticky regions attract)
 density: 0.24
 collision_rate: 0.03
 initial_conformation: random_walk
@@ -145,7 +145,7 @@ attraction_coefficient_matrix: null
 repulsion: 1
 equilibration_timestep: 100000 
 num_MD_steps_per_LE: 100
-attraction_radius: 0 # This has to be 0 when there is no attraction!
+attraction_radius: 0 # 0 switches the nonbonded force off: no excluded volume, no stickiness. For either, use 1.5 and set attraction_energy (0 = only sticky regions attract)
 density: 0.24
 collision_rate: 0.03
 initial_conformation: crumpled
@@ -216,11 +216,15 @@ slurm:
 | Name                            | Type                                             | Default      | Constraints          | Description                                                              |
 | ------------------------------- | ------------------------------------------------ | ------------ | -------------------- | ------------------------------------------------------------------------ |
 | `monomer_type_list`             | `List[int]?` \| `List[[int, int]]?`                                  | `null`       | If `None`, the list is automatically set to all zeros with length `num_monomers`. If given as `List[int]`, the list length **must equal** `num_monomers`. If given as `List[[monomer_type, count]]`, the sum of all `count` values **must equal** `num_monomers` after expansion. | Specifies the monomer type at each position along the polymer. These types index into the attraction coefficient matrix to control inter-monomer interactions. If not provided, the polymer is assumed to be a homopolymer with all monomers of type `0`.|
-| `attraction_coefficient_matrix` | `list[list[float]]?`                             | `null`       | square matrix        | Inter-type attraction coefficients. If `null`, no attraction is assumed. |
+| `attraction_coefficient_matrix` | `list[list[float]]?`                             | `null`       | square, symmetric; types numbered 0, 1, 2, ... without gaps | Extra attraction between monomer types, in kT per contact: the sticky regions. If `null`, nothing is sticky. Nonzero entries need `attraction_radius` above 1.0. |
 | `repulsion`                     | `float`                                          | `5.0`        | `>= 0`               | Repulsion constant between monomers.                                     |
 | `equilibration_timestep`        | `int`                                            | `1500`       | `>= 1`               | MD timesteps used to relax the initial conformation.                     |
+| `equilibrate_without_stickiness` | `bool`                                          | `false`      | –                    | Switch the sticky-region attraction (`attraction_coefficient_matrix`) off for energy minimization and equilibration, and back on before the first loop-extrusion step, so the start carries no stickiness bias (e.g. a pre-formed tether). The uniform `attraction_energy` and excluded volume stay on. |
 | `num_MD_steps_per_LE`           | `int`                                            | `1000`       | `>= 1`               | MD timesteps between LE updates.                                         |
-| `attraction_radius`             | `float`                                          | `0`          | `>= 0`               | Radius over which monomer attraction acts.                               |
+| `attraction_radius`             | `float`                                          | `0`          | `0` or `> 1.0`       | Range of the attraction, in bond lengths. Also the nonbonded cutoff: `0` switches the nonbonded force off entirely (no excluded volume, no stickiness); `1.5` is standard. Above 1.0, `attraction_energy` must be set explicitly. |
+| `attraction_energy`             | `float`                                          | `3.0`        | `>= 0`; required when `attraction_radius > 1.0` | Uniform attraction between **every** pair of monomers, in kT. `0` gives excluded volume plus only the sticky regions. The 3 kT default collapses the chain and typically stops the run with `EKExceedsError`, so a config that switches the attraction on must choose a value. |
+| `angle_k`                       | `float`                                          | `1.5`        | `>= 0`               | Bending stiffness. 1.5 is flexible, 8 is stiff.                          |
+| `save_every_blocks`             | `int`                                            | `1`          | `>= 1`; must divide `num_LE_steps` | Save positions every Nth loop-extrusion step. Frame 0 is the end of setup; frame k is LE step k × `save_every_blocks`. |
 | `density`                       | `float`                                          | `0.24`       | `0 < density ≤ 1`    | Initial polymer density relative to the enclosing box.                   |
 | `collision_rate`                | `float`                                          | `0.03`       | `> 0`                | Rate of monomer–monomer collisions.                                      |
 | `smc_bond_dist`                 | `float`                                          | `0.5`        | `> 0`                | Mean bond length between condensin arms.                                 |

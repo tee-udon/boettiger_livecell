@@ -2,7 +2,7 @@
 import argparse
 import logging
 from pathlib import Path
-from config_loader import load_config
+from config_loader import check_run_dir, load_config
 from sim_config import SimConfig
 from run_sim import run
 
@@ -59,6 +59,9 @@ def main():
     base = Path(cfg.out_dir)
     sub = args.out_subdir or cfg.condition_name or "default"
     run_dir = base / sub
+    # Before anything is written: a folder holding checkpoints from a different
+    # config would otherwise be silently reused or resumed.
+    check_run_dir(cfg, run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     save_resolved_config(cfg, run_dir)

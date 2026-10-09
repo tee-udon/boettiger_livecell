@@ -90,13 +90,25 @@ def downsampling_LE(cfg: SimConfig, run_dir: Path, run_id: int) -> None:
         [np.load(p, mmap_mode="r") for p in cohesin_pos_files], axis=0
     )
 
+    # An unbound extruder is recorded as -1 by run_sim_LE. Capture that BEFORE
+    # the sister offset below, which would otherwise turn -1 into a perfectly
+    # legal-looking monomer index and lose the distinction entirely.
+    num_monomers = cfg.num_monomers
+    unbound = cohesin_pos_array < 0
+
     # This make sure that the monomer idx of second sister is not the same as the monomer idx of the first sister
     # This will help assign the force field in the MD step
-    num_monomers = cfg.num_monomers
-    cohesin_pos_array += int(num_monomers * run_id)
+    cohesin_pos_array = cohesin_pos_array + int(num_monomers * run_id)
 
     # clip such that the index is greater than 0
     cohesin_pos_array = np.clip(cohesin_pos_array, 1, None)
+
+    # Restore the unbound sentinel. Clipping everything to >= 1 used to turn
+    # every unbound extruder into a self-bond (1, 1) on monomer 1 -- one bogus
+    # bond per unbound extruder per frame, which bondUpdater's range filter
+    # cannot catch, because 1 is a legal index. Negative indices ARE dropped
+    # there, so -1 correctly reads as "this extruder holds no bond this frame".
+    cohesin_pos_array[unbound] = -1
 
     num_timesteps, num_cohesin, num_heads = cohesin_pos_array.shape
     downsampling_ratio = 1  # No downsampling
@@ -128,6 +140,21 @@ def run(cfg: SimConfig, run_dir: Path) -> None:
 
     if cfg.num_cohesin == 0:
         log.info("Number of total cohesin = 0. No 1D Loop Extrusion Simulation.")
+
+    elif (run_dir / f"LEFPositions_{idx_run}.h5").exists():
+        # ⛔ CORRECTNESS, not an optimisation. The LE stage is NOT deterministic
+        # -- the numba RNG ignores np.random.seed -- so re-running it after a
+        # preemption produces a DIFFERENT 1D trajectory. simulate_MD resumes the
+        # 3D conformation from the blocks already on disk, and those positions
+        # were evolved under the ORIGINAL bond stream. Re-running LE would splice
+        # them onto a stream that never formed those loops: no error, no crash,
+        # just physically incoherent output. Reuse the existing h5 instead.
+        log.info(
+            "LEFPositions_%d.h5 exists -- reusing it and skipping the LE stage. "
+            "(LE is not deterministic; re-running would desync the bonds from a "
+            "resumed conformation.)",
+            idx_run,
+        )
 
     else:
         log.info("Simulating 1D Loop Extrusion...")

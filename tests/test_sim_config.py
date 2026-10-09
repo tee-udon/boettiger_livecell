@@ -152,7 +152,8 @@ def test_ctcf_defaults_when_locations_given():
     )
     assert cfg.ctcf_site_direction_list == ["both", "both"]
     assert cfg.ctcf_site_stall_probability_list == [1, 1]
-    assert cfg.ctcf_site_stall_time_list == [1000000, 1000000]
+    # Permanent stall. f0e3b14 changed this default from 1e6 to np.inf.
+    assert cfg.ctcf_site_stall_time_list == [float("inf"), float("inf")]
 
 
 def test_ctcf_location_out_of_range_low_raises():
@@ -225,7 +226,7 @@ def test_ctcf_stall_time_bounds_and_length():
     [
         ("num_replicates", 0),
         ("num_monomers", 0),
-        ("cohesin_speed", 0.5),  # ge=1
+        ("cohesin_speed", -0.1),  # ge=0
         ("cohesin_speed_sd", -1),  # ge=0
         ("cohesin_stall_time", 0.5),  # ge=1
         ("cohesin_stall_probability", -0.1),  # < 0
@@ -249,6 +250,29 @@ def test_scalar_field_constraints(field, value):
     # We pass only one overridden field; others keep defaults.
     with pytest.raises(ValidationError):
         SimConfig(**{field: value})
+
+
+@pytest.mark.parametrize("value", [0.0, 0.1, 0.45, 1.0, 1.5, 2.7, 5.0])
+def test_cohesin_speed_accepts_any_non_negative_rate(value):
+    """cohesin_speed is a mean advance per arm per round, not a step count.
+
+    Sub-unit values are the intended way to set processivity below one monomer
+    per round, and fractional values above 1 are honoured too: each arm draws
+    floor(speed) certain steps plus one Bernoulli(frac(speed)) step. This field
+    was ge=1, which blocked the sub-unit mechanism outright.
+    """
+    assert SimConfig(cohesin_speed=value).cohesin_speed == value
+
+
+def test_equilibrate_without_stickiness_is_opt_in():
+    """Off by default, so older configs keep the behaviour they were run with.
+
+    Resolved configs saved before this field existed reload with the default,
+    and those runs relaxed with the stickiness on.
+    """
+    assert SimConfig().equilibrate_without_stickiness is False
+    cfg = SimConfig(equilibrate_without_stickiness=True)
+    assert cfg.equilibrate_without_stickiness is True
 
 
 # -----------------------

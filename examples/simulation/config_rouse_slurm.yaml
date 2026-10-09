@@ -36,7 +36,7 @@ attraction_coefficient_matrix: null
 repulsion: 0
 equilibration_timestep: 100000 
 num_MD_steps_per_LE: 1000
-attraction_radius: 0 # This has to be 0 when there is no attraction!
+attraction_radius: 0 # 0 switches the nonbonded force off: no excluded volume, no stickiness. For either, use 1.5 and set attraction_energy (0 = only sticky regions attract)
 density: 0.24
 collision_rate: 0.03
 initial_conformation: random_walk
